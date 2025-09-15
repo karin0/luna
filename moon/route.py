@@ -84,17 +84,14 @@ class Dijkstra(NamedTuple):
 class ZoneSet:
     def __init__(self) -> None:
         self._zones: list[Zone] = []
-        self._nodes: list[Node] = []
-        self._node_map: dict[str, Node] = {}
+        self._nodes: dict[str, Node] = {}
         self._canonical: dict[str, Node] = {}
         self._src = src = self._add('_src', NodeKind.ZONE)
         src.dist = 0
 
     def _add(self, name: str, kind: NodeKind) -> Node:
-        u = Node(name, kind)
-        self._nodes.append(u)
-        assert name not in self._node_map
-        self._node_map[name] = u
+        assert name not in self._nodes
+        self._nodes[name] = u = Node(name, kind)
         return u
 
     def add(self, name: str, hosts: Sequence[Sequence[str]], src=False) -> Zone:
@@ -124,7 +121,7 @@ class ZoneSet:
         if via:
             try:
                 # via is an existing HOST or PROXY?
-                u = self._node_map[via]
+                u = self._nodes[via]
             except KeyError:
                 # Create a new PROXY node for an alias or an arbitrary hostname.
                 try:
@@ -159,11 +156,10 @@ class ZoneSet:
                         heapq.heappush(q, Dijkstra(t, v))
 
     def trace(self, name: str) -> Sequence[str] | None:
-        u = self._node_map[name]
-        return u.find()
+        return self._nodes[name].find()
 
     def inject(self, conf: Config):
-        for u in self._nodes:
+        for u in self._nodes.values():
             if u.kind != NodeKind.ZONE and (way := u.find()):
                 target = u.name
                 final_hop = way[-1]
@@ -187,7 +183,7 @@ class ZoneSet:
     def contains(self, zone: Zone, name: str) -> bool:
         name = self._canonical.get(name, name)
         try:
-            u = self._node_map[name]
+            u = self._nodes[name]
         except KeyError:
             return False
 
