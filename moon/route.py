@@ -158,6 +158,15 @@ class ZoneSet:
     def trace(self, name: str) -> Sequence[str] | None:
         return self._nodes[name].find()
 
+    # ssh <name> -> ssh <final_hop> -J <jumps>
+    # <final_hop> might be an alias of <name> if <name> is a canonical host.
+    # Only used in wrapper mode, where we can modify the connected destination.
+    def resolve(self, name: str) -> tuple[str, str] | None:
+        if way := self._nodes[name].find():
+            return way[-1], ','.join(way[:-1])
+
+    # In generating mode, we inject ProxyJump options to every hop and "attach"
+    # all connecting options of the final hop to the destination host.
     def inject(self, conf: Config):
         for u in self._nodes.values():
             if u.kind != NodeKind.ZONE and (way := u.find()):

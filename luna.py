@@ -122,7 +122,8 @@ def load_hook(file):
 class ZoneConfig:
     def __init__(self, file) -> None:
         cfg = configparser.ConfigParser()
-        cfg.read(file)
+        if not cfg.read(file):
+            raise FileNotFoundError(file)
 
         self._hooks = hooks = []
         self.g = g = ZoneSet()
@@ -236,11 +237,7 @@ def generate(file: TextIO, args):
         dbg('Direct for', host, must=True)
     else:
         g.route()
-
-        for z, dist, way in g.iter_zones():
-            if way is not None:
-                must = host and g.contains(z, host)
-                dbg('[' + ', '.join(way) + ']', '->', z, f'({dist})', must=must)
+        dbg_zones(g, host)
 
         try:
             if host and g.trace(host) is None:
@@ -260,6 +257,45 @@ def generate(file: TextIO, args):
 
     if args.header:
         print(args.header, file=file)
+
+
+def resolve(args) -> tuple[str, str]:
+    cfg = ZoneConfig(args.zone_file)
+    g = cfg.g
+    host = args.host
+    assert host
+
+    if register_highlights:
+        highlights = (
+            ('zone', cfg.zones.keys()),
+            ('host', (host,)),
+        )
+        register_highlights(highlights)
+
+    real_host = host.removeprefix('d.')
+    if real_host != host:
+        dbg('Direct for', real_host, must=True)
+        return real_host, ''
+
+    g.route()
+    dbg_zones(g, host)
+
+    try:
+        if res := g.resolve(host):
+            return res
+        else:
+            dbg('No route to host', host, must=True)
+    except KeyError:
+        pass
+
+    return host, ''
+
+
+def dbg_zones(g: ZoneSet, host: str):
+    for z, dist, way in g.iter_zones():
+        if way is not None:
+            must = host and g.contains(z, host)
+            dbg('[' + ', '.join(way) + ']', '->', z, f'({dist})', must=must)
 
 
 def dbg_query(c: Config, host: str):
@@ -282,14 +318,93 @@ def preview(file: str, args):
     dbg_query(c, host)
 
 
+def find_host(argv: Iterable[str]) -> int:
+    # ssh(1)
+    FLAGS = frozenset('46AaCfGgKkMNnqsTtVvXxYy')
+
+    # Find the first positional argument (host/destination).
+    it = iter(argv)
+    while a := next(enumerate(it), None):
+        i, a = a
+        if a and a[0] == '-':
+            if a == '--':
+                return i + 1
+
+            a = a[1:]
+            for i, c in enumerate(a):
+                if c not in FLAGS:
+                    # All other options take an argument.
+                    if i == len(a) - 1:
+                        # The next argument is its value.
+                        next(it, None)
+                    break
+        else:
+            return i if a else -1
+
+    return -1
+
+
+def execute(argv: list[str], args):
+    if (idx := find_host(argv)) < 0:
+        return argv
+
+    host = argv[idx]
+    p = host.find('@')
+    if p >= 0:
+        args.host = host[p + 1 :]
+        prefix = host[: p + 1]
+    else:
+        args.host = host
+        prefix = ''
+
+    real_host, jumps = resolve(args)
+
+    argv[idx] = prefix + real_host
+    if jumps:
+        argv.append('-J')
+        argv.append(jumps)
+
+    return argv
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input-file', default='config')
     parser.add_argument('-z', '--zone-file', default='zone.ini')
     parser.add_argument('-o', '--output-file')
     parser.add_argument('-H', '--header')
-    parser.add_argument('host', nargs='?')
+    parser.add_argument('-x', '--ssh-executable')
+    parser.add_argument('host_or_args', nargs='*')
     a = parser.parse_args()
+
+    if ssh := a.ssh_executable:
+        # We modify the argv in this wrapper mode, instead of parsing and generating
+        # config files with our unreliable parser.
+        # This should be more robust and respectful to the existing config, but
+        # requires the wrapper to be set up in PATH for all integrations.
+        argv = a.host_or_args
+        if argv:
+            try:
+                argv = execute(argv, a)
+            except Exception:
+                # Keep the original argv on error.
+                import traceback
+
+                traceback.print_exc()
+
+        dbg('luna: executing', repr(' '.join(argv)), must=True)
+        cmd = (ssh, *argv)
+        if os.name == 'nt':
+            import subprocess
+
+            ret = subprocess.run(cmd).returncode
+            sys.exit(ret)
+        else:
+            os.execvp(ssh, cmd)
+
+        return
+
+    a.host = a.host_or_args[0] if a.host_or_args else None
 
     if file := a.output_file:
         with wait_lock(file + '.lock') as waited:
