@@ -155,7 +155,7 @@ class ZoneConfig:
                         spec = via
                     except ValueError:
                         # via:to
-                        return to, via, None
+                        return zones[to], via, None
                 except ValueError:
                     # via/to
                     spec = arc
