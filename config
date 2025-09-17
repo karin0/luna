@@ -2,5 +2,5 @@
 # - Disable 'python3.exe' in 'App execution aliases' in settings
 # - Add 'C:\Program Files\Git\bin' to PATH to enable bash
 
-Match host * exec "cd ~/.ssh && bash luna/install.sh %h"
+Match exec "bash ~/.ssh/luna/install.sh -c ~/.ssh %h || echo Luna failed, trying the previous config >&2"
   Include ~/.ssh/config.inc

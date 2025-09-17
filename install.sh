@@ -3,6 +3,18 @@ set -eo pipefail
 
 exec 1>&2
 file="$HOME/.ssh/config.inc"
+input_file=sshconfig
+here="$(realpath -m "$0/..")"
+
+# `--` is not handled to allow passing `-z` in `config`.
+while true; do
+  case "$1" in
+    -c) cd "$2"; shift 2 ;;
+    -i) input_file="$2"; shift 2 ;;
+    -o) file="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
 
 arg="$*"
 if [ -t 1 ] && [ -n "$arg" ]; then
@@ -39,6 +51,5 @@ else
   echo "luna: generating $file$at"
 fi
 
-here="$(realpath -m "$0/..")"
 header="# Generated from 🥮$at at $(date). DO NOT EDIT!"
-exec $py "$here"/luna.py -H "$header" -o "$file" -i sshconfig "$@"
+exec $py "$here"/luna.py -H "$header" -o "$file" -i "$input_file" "$@"
