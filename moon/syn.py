@@ -170,7 +170,7 @@ class Config:
         for blk in blks:
             for line in blk.trimmed():
                 # SSH takes the first occurrence of an option.
-                opt = line.split(maxsplit=1)[0].lower()
+                opt = line.split(maxsplit=1)[0].rstrip('=').lower()
                 if opt not in vis:
                     vis.add(opt)
                     yield line
