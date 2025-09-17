@@ -59,12 +59,12 @@ class Config:
         self._wildcards: list[tuple[str, Block]] = []
         self._blks: list[Block] = []
         self._ext_blks: list[Block] = []
+        self._query_opts = set()
         blk = Block()
 
-        def flush(new_blk=None):
+        def flush(new_blk):
             nonlocal blk
-            if blk:
-                self._push_blk(blk, blk.hosts)
+            self._push_blk(blk, blk.hosts)
             blk = new_blk
 
         for line in fp:
@@ -77,7 +77,7 @@ class Config:
                 flush(Block(line))
             elif stem:
                 blk.push(line)
-        flush()
+        flush(None)
 
     def _push_blk(self, blk: Block, hosts: Iterable[str], ext: bool = False) -> None:
         blks = self._ext_blks if ext else self._blks
@@ -145,8 +145,10 @@ class Config:
 
     # A more general implementation.
     def attach(self, name: str, host: str) -> None:
-        if name != host and (opts := self.query(host)):
-            lines = (f'# Attached to {host}',) + opts
+        if name != host:
+            lines = [f'# Attached to {host}', *self._query(host)]
+            if 'hostname' not in self._query_opts:
+                lines.append(f'Hostname {host}')
             self.add_host((name,), lines)
 
     def add_host(self, hosts: Sequence[str], lines: Sequence[str]) -> Block:
@@ -166,15 +168,15 @@ class Config:
         # Extended blocks prioritized.
         blks.sort(key=lambda blk: (not blk.ext, blk.no))
 
-        vis = set()
+        vis = self._query_opts
+        vis.clear()
         for blk in blks:
-            # SSH takes the first occurrence of an option.
             for line in blk.trimmed():
-                opt, _ = line.split(maxsplit=1)
-                if not opt.startswith('#') and opt in vis:
-                    continue
-                vis.add(opt)
-                yield line
+                # SSH takes the first occurrence of an option.
+                opt = line.split(maxsplit=1)[0].lower()
+                if opt not in vis:
+                    vis.add(opt)
+                    yield line
 
     def query(self, host: str) -> tuple[Line, ...]:
         # Original blocks prioritized eventually.
