@@ -24,6 +24,17 @@ class Block:
     def push(self, line: str):
         self.lines.append(line)
 
+    def test(self, host: str) -> bool:
+        hit = False
+        for pattern in self.hosts:
+            if pattern[0] == '!':
+                if fnmatch(host, pattern[1:]):
+                    return False
+            elif fnmatch(host, pattern):
+                hit = True
+
+        return hit
+
     # Source input block for the lines are tracked.
     def trimmed(self) -> Iterable['Line']:
         for line in self.lines:
@@ -56,7 +67,7 @@ class Line(str):
 class Config:
     def __init__(self, fp: TextIO) -> None:
         self._host_map: defaultdict[str, list[Block]] = defaultdict(list)
-        self._wildcards: list[tuple[str, Block]] = []
+        self._wildcards: list[Block] = []
         self._blks: list[Block] = []
         self._ext_blks: list[Block] = []
         self._query_opts = set()
@@ -64,7 +75,7 @@ class Config:
 
         def flush(new_blk):
             nonlocal blk
-            self._push_blk(blk, blk.hosts)
+            self._push_blk(blk)
             blk = new_blk
 
         for line in fp:
@@ -79,14 +90,18 @@ class Config:
                 blk.push(line)
         flush(None)
 
-    def _push_blk(self, blk: Block, hosts: Iterable[str], ext: bool = False) -> None:
+    def _push_blk(self, blk: Block, ext: bool = False) -> None:
         blks = self._ext_blks if ext else self._blks
         blks.append(blk)
-        for host in hosts:
-            if '*' in host:
-                self._wildcards.append((host, blk))
-            else:
-                self._host_map[host].append(blk)
+        for host in blk.hosts:
+            has_wildcards = False
+            if host[0] != '!':
+                if '*' in host:
+                    if not has_wildcards:
+                        self._wildcards.append(blk)
+                        has_wildcards = True
+                else:
+                    self._host_map[host].append(blk)
 
     def print(self, file: TextIO = sys.stdout) -> None:
         for blks in (self._ext_blks, self._blks):
@@ -125,25 +140,6 @@ class Config:
         return res
 
     # Attach `name` as an alias of `host`.
-    # This only works when no conflicting options for `name` exist before `host`.
-    # This doesn't update `Block.hosts`, which always remain the original input ones.
-    def _attach(self, name: str, host: str) -> None:
-        if name == host:
-            return
-
-        blks = set()
-        for blk in self._host_map.get(host, ()):
-            blks.add(blk)
-
-        for pattern, blk in self._wildcards:
-            if not fnmatch(name, pattern) and fnmatch(host, pattern):
-                blks.add(blk)
-
-        for blk in blks:
-            blk.header += ' ' + name
-            self._host_map[name].append(blk)
-
-    # A more general implementation.
     def attach(self, name: str, host: str) -> None:
         if name != host:
             lines = [f'# Attached to {host}', *self._query(host)]
@@ -152,21 +148,22 @@ class Config:
             self.add_host((name,), lines)
 
     def add_host(self, hosts: Sequence[str], lines: Sequence[str]) -> Block:
-        blk = Block('Host ' + ' '.join(hosts), ext=True)
+        blk = Block('Host ' + ' '.join(hosts), hosts, ext=True)
         for line in lines:
             blk.push(line)
-        self._push_blk(blk, hosts, ext=True)
+        self._push_blk(blk, ext=True)
         return blk
 
     def _query(self, host: str) -> Iterable[Line]:
-        blks = list(self._host_map.get(host, ()))
+        # We assume there is never 'Host foo !f*o'.
+        blks = set(self._host_map.get(host, ()))
 
-        for pattern, blk in self._wildcards:
-            if fnmatch(host, pattern):
-                blks.append(blk)
+        for blk in self._wildcards:
+            if blk not in blks and blk.test(host):
+                blks.add(blk)
 
-        # Extended blocks prioritized.
-        blks.sort(key=lambda blk: (not blk.ext, blk.no))
+        # Sort and unique. Extended blocks prioritized.
+        blks = sorted(blks, key=lambda blk: (not blk.ext, blk.no))
 
         vis = self._query_opts
         vis.clear()
