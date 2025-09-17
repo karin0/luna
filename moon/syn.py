@@ -103,18 +103,22 @@ class Config:
                 else:
                     self._host_map[host].append(blk)
 
-    def print(self, file: TextIO = sys.stdout) -> None:
-        for blks in (self._ext_blks, self._blks):
-            for blk in blks:
-                print(blk.header, file=file)
-                for line in blk.lines:
-                    if blk.ext:
-                        file.write('  ')
-                    if isinstance(line, Line) and (header := line.blk.header.strip()):
-                        print(line + '  # ' + header, file=file)
-                    else:
-                        print(line, file=file)
-                print(file=file)
+    def _print(self, blks: Iterable[Block], file: TextIO) -> None:
+        for blk in blks:
+            print(blk.header, file=file)
+            for line in blk.lines:
+                if blk.ext:
+                    file.write('  ')
+                if isinstance(line, Line) and (header := line.blk.header.strip()):
+                    line += '  # ' + header
+                print(line, file=file)
+            print(file=file)
+
+    def print(self, file: TextIO = sys.stdout, separator=None) -> None:
+        self._print(self._ext_blks, file)
+        if separator:
+            print(separator, file=file)
+        self._print(self._blks, file)
 
     def sub(self, repl: Callable[[str], str]) -> dict[str, str]:
         res = {}

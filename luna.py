@@ -197,7 +197,10 @@ def do_sub(cmd):
     return cmd.strip()
 
 
-def _generate(file: TextIO, args):
+def generate(file: TextIO, args):
+    if args.header:
+        print(args.header, file=file)
+
     with open(args.input_file, encoding='utf-8') as fp:
         c = Config(fp)
 
@@ -253,7 +256,10 @@ def _generate(file: TextIO, args):
     if not file.isatty():
         flush_dbg(file)
 
-    c.print(file)
+    c.print(file, separator=args.header)
+
+    if args.header:
+        print(args.header, file=file)
 
 
 def dbg_query(c: Config, host: str):
@@ -274,14 +280,6 @@ def preview(file: str, args):
         register_highlights((('name', c.hosts()), ('host', (host,))))
 
     dbg_query(c, host)
-
-
-def generate(file: TextIO, args):
-    if args.header:
-        print(args.header, file=file)
-    _generate(file, args)
-    if args.header:
-        print(args.header, file=file)
 
 
 def main():
