@@ -80,7 +80,6 @@ def generate(file: TextIO, args):
         c = Config(fp)
 
     cfg = ZoneConfig(args.zone_file)
-    g = cfg.g
     host = args.host
 
     if register_highlights:
@@ -99,25 +98,15 @@ def generate(file: TextIO, args):
             if v:
                 dbg(k + '\t| ' + v)
 
-    direct = False
-    if host:
-        real_host = host.removeprefix('d.')
-        if real_host != host:
-            # Assert a direct mode
-            direct = True
-            c.attach(host, real_host)
-
-    if direct:
-        dbg('Direct for', host, must=True)
+    if host and (real_host := cfg.resolve_direct_mode(host)):
+        dbg('Direct for', real_host, must=True)
+        c.attach(host, real_host)
     else:
-        g.route()
+        g = cfg.route()
         dbg_zones(g, host)
 
-        try:
-            if host and g.trace(host) is None:
-                dbg('No route to host', host, must=True)
-        except KeyError:
-            pass
+        if host and g.trace(host) is None:
+            dbg('No route to host', host, must=True)
 
         g.inject(c)
 
@@ -135,7 +124,6 @@ def generate(file: TextIO, args):
 
 def resolve(args) -> tuple[str, str]:
     cfg = ZoneConfig(args.zone_file)
-    g = cfg.g
     host = args.host
     assert host
 
@@ -146,22 +134,17 @@ def resolve(args) -> tuple[str, str]:
         )
         register_highlights(highlights)
 
-    real_host = host.removeprefix('d.')
-    if real_host != host:
+    if real_host := cfg.resolve_direct_mode(host):
         dbg('Direct for', real_host, must=True)
         return real_host, ''
 
-    g.route()
+    g = cfg.route()
     dbg_zones(g, host)
 
-    try:
-        if res := g.resolve(host):
-            return res
-        else:
-            dbg('No route to host', host, must=True)
-    except KeyError:
-        pass
+    if res := g.resolve(host):
+        return res
 
+    dbg('No route to host', host, must=True)
     return host, ''
 
 
