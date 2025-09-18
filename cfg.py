@@ -33,6 +33,7 @@ def check_timezone(hours: int) -> bool:
 
 
 def in_zone(cfg, zone):
+    # AND for timezone and subnet, so no constraint means always hits.
     if tz := cfg.get(zone, 'timezone', fallback=None):
         if not check_timezone(float(tz)):
             return False
@@ -44,9 +45,8 @@ def in_zone(cfg, zone):
             interfaces = Interfaces()
             trace('Interfaces')
 
-        for s in subnets:
-            if not interfaces.check_subnet(s):
-                return False
+        # OR for all subnets.
+        return any(interfaces.check_subnet(s) for s in subnets)
 
     return True
 
