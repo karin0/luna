@@ -1,5 +1,5 @@
 import os
-from ipaddress import IPv4Interface, IPv4Network
+from ipaddress import AddressValueError, IPv4Address, IPv4Interface, IPv4Network
 
 try:
     import netifaces
@@ -10,7 +10,9 @@ from .util import dbg
 
 
 def interfaces():
-    if not netifaces:
+    if not netifaces or os.name == 'nt':
+        # Calling `netifaces.ifaddresses()` for every interface seems slower than
+        # `ipconfig` on Windows.
         import subprocess
         import re
 
@@ -56,3 +58,28 @@ class Interfaces:
                     as_super and intf_net.subnet_of(net)
                 ):
                     return intf
+
+
+if netifaces:
+    # `netifaces.gateways()` is faster than checking all interfaces.
+
+    class Gateways:
+        def __init__(self):
+            self._gws: set[IPv4Address] = set()
+            for gw in netifaces.gateways().values():
+                for t in gw.values() if isinstance(gw, dict) else gw:
+                    try:
+                        ip = IPv4Address(t[0])
+                    except AddressValueError:
+                        pass
+                    else:
+                        if not ip.is_loopback:
+                            self._gws.add(ip)
+
+            dbg('gateways:', ', '.join(map(str, self._gws)))
+
+        def check_subnet(self, cidr: str) -> IPv4Address | None:
+            net = IPv4Network(cidr, strict=False)
+            for gw in self._gws:
+                if gw in net:
+                    return gw

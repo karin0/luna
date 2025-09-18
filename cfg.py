@@ -5,6 +5,15 @@ import importlib.util
 
 from moon.intf import Interfaces
 from moon.route import Zone, ZoneSet
+from moon.util import trace
+
+if not os.environ.get('LUNA_STRICT_SUBNET'):
+    try:
+        # Use faster gateway lookup by default when `netifaces` is available.
+        # This is more permissive, and may not work in Termux.
+        from moon.intf import Gateways as Interfaces
+    except ImportError:
+        pass
 
 interfaces = None
 timezone = None
@@ -24,18 +33,20 @@ def check_timezone(hours: int) -> bool:
 
 
 def in_zone(cfg, zone):
+    if tz := cfg.get(zone, 'timezone', fallback=None):
+        if not check_timezone(float(tz)):
+            return False
+
     if subnets := cfg.get(zone, 'subnet', fallback='').split():
         global interfaces
         if not interfaces:
+            trace('>Interfaces')
             interfaces = Interfaces()
+            trace('Interfaces')
 
         for s in subnets:
             if not interfaces.check_subnet(s):
                 return False
-
-    if tz := cfg.get(zone, 'timezone', fallback=None):
-        if not check_timezone(float(tz)):
-            return False
 
     return True
 

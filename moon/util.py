@@ -1,3 +1,4 @@
+import os
 import sys
 
 if sys.stderr.isatty():
@@ -27,6 +28,8 @@ else:
 
 
 _dbg = dbg_print
+_time = None
+_time0 = None
 
 
 def dbg(*args, **kwargs):
@@ -43,3 +46,26 @@ def get_stem(line: str) -> str:
     if p >= 0:
         line = line[:p]
     return line.strip()
+
+
+if os.environ.get('MOON_TRACE'):
+
+    def trace(*args, **kwargs):
+        import time
+
+        t = time.monotonic() * 1000
+        global _time, _time0
+        if _time:
+            dt = t - _time
+            dt0 = t - _time0
+            _time = t
+        else:
+            _time = _time0 = t
+            dt = dt0 = 0
+
+        dbg(f'[{dt:6.3f} {dt0:7.3f}]', *args, **kwargs)
+
+else:
+
+    def trace(*args, **kwargs):
+        pass
