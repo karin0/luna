@@ -8,17 +8,16 @@ from typing import Iterable
 from moon.util import dbg
 
 
-def find_host(argv: Iterable[str]) -> int:
+def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
     # ssh(1)
     FLAGS = frozenset('46AaCfGgKkMNnqsTtVvXxYy')
 
     # Find the first positional argument (host/destination).
-    it = iter(argv)
-    while a := next(enumerate(it), None):
-        i, a = a
-        if a and a[0] == '-':
+    it = iter(enumerate(argv))
+    while t := next(it, None):
+        if (a := t[1]) and a[0] == '-':
             if a == '--':
-                return i + 1 if next(it, None) else -1
+                return next(it, None)
 
             a = a[1:]
             for i, c in enumerate(a):
@@ -29,29 +28,26 @@ def find_host(argv: Iterable[str]) -> int:
                         next(it, None)
                     break
         else:
-            return i if a else -1
-
-    return -1
+            return t if a else None
 
 
 def execute(argv: list[str], args):
-    if (idx := find_host(argv)) < 0:
+    if not (t := find_host(argv)):
         return argv
 
-    host = argv[idx]
-    p = host.find('@')
-    if p >= 0:
-        args.host = host[p + 1 :]
+    idx, host = t
+    if (p := host.find('@')) >= 0:
+        host = host[p + 1 :]
         prefix = host[: p + 1]
     else:
-        args.host = host
         prefix = ''
 
     from lib import resolve
 
-    real_host, jumps = resolve(args)
+    args.host = host
+    host, jumps = resolve(host, args)
 
-    argv[idx] = prefix + real_host
+    argv[idx] = prefix + host
     if jumps:
         argv.append('-J')
         argv.append(jumps)
