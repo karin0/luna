@@ -73,9 +73,6 @@ def do_sub(cmd):
 
 
 def generate(file: TextIO, args):
-    if args.header:
-        print(args.header, file=file)
-
     with open(args.input_file, encoding='utf-8') as fp:
         c = Config(fp)
 
@@ -112,6 +109,9 @@ def generate(file: TextIO, args):
 
     if host:
         dbg_query(c, host)
+
+    if args.header:
+        print(args.header, file=file)
 
     if not file.isatty():
         flush_dbg(file)
@@ -156,7 +156,7 @@ def dbg_zones(g: ZoneSet, host: str):
 def dbg_query(c: Config, host: str):
     groups = itertools.groupby(c.query(host), key=lambda line: line.blk)
     for blk, lines in groups:
-        hosts = ', '.join(blk.hosts) if blk.hosts else '<auto>'
+        hosts = '<auto>' if blk.ext else ', '.join(blk.hosts)
         dbg(f'{hosts}: {', '.join(lines)}')
 
 

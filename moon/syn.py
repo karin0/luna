@@ -1,12 +1,26 @@
 import re
 import sys
+import shlex
 from fnmatch import fnmatch
 from collections import defaultdict
 from typing import Iterable, Sequence, TextIO, Callable
 
-from .util import get_stem
-
 SUB_REG = re.compile(r'\{\{(.+?)\}\}')
+
+
+class Directive:
+    def __init__(self, line: str):
+        self.parts = p = shlex.split(line, comments=True)
+        self.opt = p[0].lower().split('=', maxsplit=1)[0] if p else ''
+
+    def __str__(self) -> str:
+        # Remove comments, leading and trailing spaces, and unnecessary
+        # quotes.
+        return shlex.join(self.parts)
+
+    def __bool__(self) -> bool:
+        return bool(self.parts)
+
 
 blk_no = 0
 
@@ -16,7 +30,7 @@ class Block:
         global blk_no
         self.header = header
         self.hosts = hosts
-        self.lines = []
+        self.lines: list[str] = []
         self.ext = ext
         self.no = blk_no
         blk_no += 1
@@ -40,8 +54,8 @@ class Block:
         for line in self.lines:
             if isinstance(line, Line):
                 yield line
-            elif l := get_stem(line):
-                yield Line(l, self)
+            elif d := Directive(line):
+                yield Line(str(d), self, d.opt)
 
     def __bool__(self):
         return bool(self.lines)
@@ -57,13 +71,21 @@ class Block:
 
 class Line(str):
     blk: Block
+    opt: str
 
-    def __new__(cls, value: str, blk: Block):
+    def __new__(cls, value: str, blk: Block, opt: str):
         obj = str.__new__(cls, value)
         obj.blk = blk
+        obj.opt = opt
         return obj
 
 
+# This aims to parse most `Host` blocks, but dynamic options applied by `Match`
+# and `Include` will not affect the generated (attached) options.
+#
+# Parsing and evaluating them like `ssh -G` could be costly with side effects.
+#
+# For complex configurations, please consider using the wrapper mode.
 class Config:
     def __init__(self, fp: TextIO) -> None:
         self._host_map: defaultdict[str, list[Block]] = defaultdict(list)
@@ -71,7 +93,7 @@ class Config:
         self._blks: list[Block] = []
         self._ext_blks: list[Block] = []
         self._query_opts = set()
-        blk = Block()
+        default_blk = blk = Block(hosts=('*',))
 
         def flush(new_blk):
             nonlocal blk
@@ -80,15 +102,17 @@ class Config:
 
         for line in fp:
             line = line.rstrip()
-            stem = line.lstrip()
-            lower = stem.lower()
-            if lower.startswith('host '):
-                flush(Block(line, line[5:].split()))
-            elif lower.startswith('match '):
+            d = Directive(line)
+            if d.opt == 'host':
+                flush(Block(line, d.parts[1:]))
+            elif d.opt == 'match':
                 flush(Block(line))
-            elif stem:
+            elif line.lstrip():
                 blk.push(line)
         flush(None)
+
+        if default_blk:
+            default_blk.header = 'Host *  # Default'
 
     def _push_blk(self, blk: Block, ext: bool = False) -> None:
         blks = self._ext_blks if ext else self._blks
@@ -128,7 +152,7 @@ class Config:
             key = m[1].strip()
             keys.append(key)
             val = repl(key)
-            res[key] = get_stem(val)
+            res[key] = val.split('#', maxsplit=1)[0].strip()
             return val
 
         def _trans(line: str) -> str:
@@ -174,8 +198,12 @@ class Config:
         for blk in blks:
             for line in blk.trimmed():
                 # SSH takes the first occurrence of an option.
-                opt = line.split(maxsplit=1)[0].rstrip('=').lower()
-                if opt not in vis:
+                if (opt := line.opt) in ('identityfile', 'certificatefile'):
+                    # ssh_config(5): Multiple IdentityFile directives will add
+                    # to the list of identities tried (this behaviour differs
+                    # from that of other configuration directives).
+                    yield line
+                elif opt not in vis:
                     vis.add(opt)
                     yield line
 
