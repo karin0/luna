@@ -122,10 +122,8 @@ def generate(file: TextIO, args):
         print(args.header, file=file)
 
 
-def resolve(args) -> tuple[str, str]:
+def resolve(host: str, args) -> tuple[str, str]:
     cfg = ZoneConfig(args.zone_file)
-    host = args.host
-    assert host
 
     if register_highlights:
         highlights = (
