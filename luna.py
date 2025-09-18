@@ -31,7 +31,7 @@ def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
             return t if a else None
 
 
-def execute(argv: list[str], args):
+def rewrite(argv: list[str], args) -> Sequence[str]:
     if not (t := find_host(argv)):
         return argv
 
@@ -49,8 +49,7 @@ def execute(argv: list[str], args):
 
     argv[idx] = prefix + host
     if jumps:
-        argv.append('-J')
-        argv.append(jumps)
+        return ('-J', jumps, *argv)
 
     return argv
 
@@ -66,13 +65,15 @@ def main():
     a = parser.parse_args()
 
     if ssh := a.ssh_executable:
-        # We modify the argv in this wrapper mode, instead of parsing and generating
-        # config files with our unreliable parser.
-        # This should be more robust and respectful to the existing config, but
-        # requires the wrapper to be set up in PATH for all integrations.
+        # We intercept and modify the `argv` in this wrapper mode, instead of
+        # parsing and generating ssh_config(5) files with our unreliable parser.
+        #
+        # This should be more robust and respectful to existing configs, but
+        # requires the wrapper to be set up in PATH for all integrations to work.
+
         if argv := a.host_or_args:
             try:
-                argv = execute(argv, a)
+                argv = rewrite(argv, a)
             except Exception:
                 # Keep the original argv on error.
                 import traceback

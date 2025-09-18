@@ -41,13 +41,6 @@ def set_dbg(f=dbg_print):
     _dbg = f
 
 
-def get_stem(line: str) -> str:
-    p = line.find('#')
-    if p >= 0:
-        line = line[:p]
-    return line.strip()
-
-
 if os.environ.get('MOON_TRACE'):
 
     def trace(*args, **kwargs):
