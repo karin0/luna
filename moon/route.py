@@ -65,7 +65,7 @@ class Node:
 class Zone:
     def __init__(self, root: Node, hosts: tuple[Node]) -> None:
         self.root = root
-        self.hosts = hosts
+        self.hosts = frozenset(hosts)
 
     def __str__(self) -> str:
         return f'{{{self.root.name}: {', '.join(h.name for h in self.hosts)}}}'
@@ -94,7 +94,7 @@ class ZoneSet:
         self._nodes[name] = u = Node(name, kind)
         return u
 
-    def add(self, name: str, hosts: Sequence[Sequence[str]], src=False) -> Zone:
+    def add(self, name: str, hosts: Sequence[Sequence[str]]) -> Zone:
         nodes: list[Node] = []
         for aliases in hosts:
             host = self._add(aliases[0], NodeKind.HOST)
@@ -110,12 +110,10 @@ class ZoneSet:
         zone = Zone(root, tuple(nodes))
         self._zones.append(zone)
 
-        if not isinstance(src, bool) and isinstance(src, int):
-            self._src.arc(root, src)
-        elif src:
-            self._src.arc(root, 0)
-
         return zone
+
+    def set_src(self, zone: Zone) -> None:
+        self._src.arc(zone.root, 0)
 
     def arc(self, frm: Zone, to: Zone | None, via: str = '', cost: int = 20) -> None:
         if via:
@@ -197,3 +195,6 @@ class ZoneSet:
             return False
 
         return u in zone.hosts
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._nodes

@@ -1,7 +1,8 @@
 import os
 import datetime
-import configparser
 import importlib.util
+
+from configparser import ConfigParser
 
 from moon.intf import Interfaces
 from moon.route import Zone, ZoneSet
@@ -32,7 +33,7 @@ def check_timezone(hours: int) -> bool:
     return timezone == hours * 3600
 
 
-def in_zone(cfg, zone):
+def in_zone(cfg: ConfigParser, zone: str) -> bool:
     # AND for timezone and subnet, so no constraint means always hits.
     if tz := cfg.get(zone, 'timezone', fallback=None):
         if not check_timezone(float(tz)):
@@ -67,12 +68,12 @@ def load_hook(file):
 
 class ZoneConfig:
     def __init__(self, file) -> None:
-        cfg = configparser.ConfigParser()
+        self._cfg = cfg = ConfigParser()
         if not cfg.read(file):
             raise FileNotFoundError(file)
 
         self._hooks = hooks = []
-        self.g = g = ZoneSet()
+        self._g = g = ZoneSet()
 
         self.zones: dict[str, Zone] = {}
         zones = self.zones
@@ -80,8 +81,7 @@ class ZoneConfig:
         for sect in cfg.sections():
             hosts = cfg.get(sect, 'host', fallback='').split()
             hosts = tuple(spec.split(':') for spec in hosts)
-            src = in_zone(cfg, sect)
-            zones[sect] = zone = g.add(sect, hosts, src=src)
+            zones[sect] = zone = g.add(sect, hosts)
 
             if hook := cfg.get(sect, 'hook', fallback=None):
                 hooks.append(load_hook(hook))
@@ -128,7 +128,27 @@ class ZoneConfig:
                 else:
                     g.arc(zone, to, via, cost)
 
+    def route(self):
+        g = self._g
+        for sect, zone in self.zones.items():
+            if in_zone(self._cfg, sect):
+                g.set_src(zone)
+
+        g.route()
+        return g
+
     def run_hooks(self, name, *args, **kwargs):
         for h in self._hooks:
             if f := getattr(h, name, None):
                 f(*args, **kwargs)
+
+    def _has_host(self, name: str) -> bool:
+        return name in self._g and name not in self.zones
+
+    def resolve_direct_mode(self, host: str) -> str | None:
+        if not self._has_host(host):
+            if (real := host.removeprefix('d.')) != host and self._has_host(real):
+                return real
+
+            # Direct for the unmanaged host.
+            return host
