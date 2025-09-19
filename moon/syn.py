@@ -5,7 +5,7 @@ from fnmatch import fnmatch
 from collections import defaultdict
 from typing import Iterable, Sequence, TextIO, Callable
 
-SUB_REG = re.compile(r'\{\{(.+?)\}\}')
+SUB_REG = r'\{\{(.+?)\}\}'
 
 
 class Directive:
@@ -55,7 +55,7 @@ class Block:
             if isinstance(line, Line):
                 yield line
             elif d := Directive(line):
-                yield Line(str(d), self, d.opt)
+                yield Line(str(d), self, d)
 
     def __bool__(self):
         return bool(self.lines)
@@ -71,12 +71,12 @@ class Block:
 
 class Line(str):
     blk: Block
-    opt: str
+    dir: Directive
 
-    def __new__(cls, value: str, blk: Block, opt: str):
+    def __new__(cls, value: str, blk: Block, dir: Directive):
         obj = str.__new__(cls, value)
         obj.blk = blk
-        obj.opt = opt
+        obj.dir = dir
         return obj
 
 
@@ -156,7 +156,7 @@ class Config:
             return val
 
         def _trans(line: str) -> str:
-            r = SUB_REG.sub(_repl, line)
+            r = re.sub(SUB_REG, _repl, line)
             if keys:
                 r += ' # ' + '; '.join(keys)
                 keys.clear()
@@ -198,7 +198,7 @@ class Config:
         for blk in blks:
             for line in blk.trimmed():
                 # SSH takes the first occurrence of an option.
-                if (opt := line.opt) in ('identityfile', 'certificatefile'):
+                if (opt := line.dir.opt) in ('identityfile', 'certificatefile'):
                     # ssh_config(5): Multiple IdentityFile directives will add
                     # to the list of identities tried (this behaviour differs
                     # from that of other configuration directives).
@@ -215,3 +215,15 @@ class Config:
 
     def hosts(self) -> Iterable[str]:
         return self._host_map.keys()
+
+    def hostnames(self) -> Iterable[tuple[str, str]]:
+        for host, blks in self._host_map.items():
+            for blk in blks:
+                for line in blk.trimmed():
+                    d = line.dir
+                    if d.opt == 'hostname' and len(d.parts) > 1:
+                        yield host, d.parts[1]
+                        break
+                else:
+                    continue
+                break

@@ -45,9 +45,8 @@ class Interfaces:
         dbg('interfaces:', ', '.join(map(str, self.ints.values())))
 
     def check_subnet(
-        self, cidr: str, *, as_sub: bool = False, as_super: bool = False
+        self, net: IPv4Network, *, as_sub: bool = False, as_super: bool = False
     ) -> IPv4Interface | None:
-        net = IPv4Network(cidr, strict=False)
         try:
             return self.ints[net]
         except KeyError:
@@ -78,8 +77,7 @@ if netifaces:
 
             dbg('gateways:', ', '.join(map(str, self._gws)))
 
-        def check_subnet(self, cidr: str) -> IPv4Address | None:
-            net = IPv4Network(cidr, strict=False)
+        def check_subnet(self, net: IPv4Network) -> IPv4Address | None:
             for gw in self._gws:
                 if gw in net:
                     return gw
