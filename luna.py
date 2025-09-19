@@ -3,7 +3,7 @@ import os
 import sys
 import time
 import argparse
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from moon.util import dbg
 
@@ -61,10 +61,11 @@ def main():
     parser.add_argument('-o', '--output-file')
     parser.add_argument('-H', '--header')
     parser.add_argument('-x', '--ssh-executable')
+    parser.add_argument('-p', '--print-cmd', action='store_true')
     parser.add_argument('host_or_args', nargs='*')
     a = parser.parse_args()
 
-    if ssh := a.ssh_executable:
+    if (ssh := a.ssh_executable) or a.print_cmd:
         # We intercept and modify the `argv` in this wrapper mode, instead of
         # parsing and generating ssh_config(5) files with our unreliable parser.
         #
@@ -81,8 +82,12 @@ def main():
                 traceback.print_exc()
 
         dbg('luna: executing', repr(' '.join(argv)), must=True)
-        cmd = (ssh, *argv)
-        if os.name == 'nt':
+        cmd = (ssh or 'ssh', *argv)
+        if a.print_cmd:
+            import shlex
+
+            print(shlex.join(cmd))
+        elif os.name == 'nt':
             import subprocess
 
             ret = subprocess.run(cmd).returncode
