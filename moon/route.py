@@ -6,55 +6,46 @@ from .syn import Config
 INF = 0x3F3F3F3F
 
 
-class NodeKind(Enum):
-    # Virtual root node representing a zone.
-    ZONE = 1
-
-    # Smart routed host in a zone.
-    # This is necessary to distinguish from different paths to the same zone.
-    HOST = 2
-
-    # Intermediate jump host, not a canonical host in any zone.
-    # Could be an alias of some host, or an arbitrary hostname.
-    # This is necessary to inject options also for aliases.
-    PROXY = 3
-
-
 class Arc(NamedTuple):
     to: 'Node'
     cost: int
+    alias: bool
 
 
 class Node:
-    def __init__(self, name: str, kind: NodeKind) -> None:
+    def __init__(self, name: str, is_host: bool) -> None:
         self.name = name
-        self.kind = kind
+        self.is_host = is_host
         self.adj: list[Arc] = []
         self.dist = INF
-        self.prev: Node | None = None
+        self.prev: tuple[Node, Arc] | None = None
         self.vis = False
         self._path = None
 
-    def arc(self, to: 'Node', cost: int) -> None:
-        self.adj.append(Arc(to, cost))
+    def arc(self, to: 'Node', cost: int, *, alias: bool = False) -> None:
+        self.adj.append(Arc(to, cost, alias))
+
+    def _find(self) -> Sequence[str] | None:
+        if prev := self.prev:
+            prev, e = prev
+            r = prev.find()
+
+            if self.is_host and not e.alias:
+                # `prev` is not an alias of `self`.
+                return (*r, self.name)
+
+            return r
+
+        return (self.name,) if self.is_host else ()
 
     def find(self) -> Sequence[str] | None:
         if self.dist >= INF:
             return None
 
-        if self._path is not None:
-            return self._path
+        if self._path is None:
+            self._path = self._find()
 
-        if prev := self.prev:
-            r = prev.find()
-            if self.kind != NodeKind.ZONE and prev.kind != NodeKind.PROXY:
-                # `prev` is not an alias of `self`.
-                r += (self.name,)
-        else:
-            r = ()
-
-        self._path = r
-        return r
+        return self._path
 
     def __str__(self) -> str:
         return '<' + self.kind.name[0] + ':' + self.name + '>'
@@ -63,9 +54,10 @@ class Node:
 
 
 class Zone:
-    def __init__(self, root: Node, hosts: tuple[Node]) -> None:
+    def __init__(self, root: Node, hosts: Sequence[Node]) -> None:
         self.root = root
         self.hosts = frozenset(hosts)
+        self.priv = None
 
     def __str__(self) -> str:
         return f'{{{self.root.name}: {', '.join(h.name for h in self.hosts)}}}'
@@ -86,53 +78,61 @@ class ZoneSet:
         self._zones: list[Zone] = []
         self._nodes: dict[str, Node] = {}
         self._canonical: dict[str, Node] = {}
-        self._src = src = self._add('_src', NodeKind.ZONE)
-        src.dist = 0
+        self._q: list[Dijkstra] = []
 
-    def _add(self, name: str, kind: NodeKind) -> Node:
+    def _add(self, name: str, is_host: bool = True) -> Node:
         assert name not in self._nodes
-        self._nodes[name] = u = Node(name, kind)
+        self._nodes[name] = u = Node(name, is_host)
         return u
 
     def add(self, name: str, hosts: Sequence[Sequence[str]]) -> Zone:
         nodes: list[Node] = []
         for aliases in hosts:
-            host = self._add(aliases[0], NodeKind.HOST)
-            nodes.append(host)
+            canonical = self._add(aliases[0])
+            nodes.append(canonical)
             for alias in aliases[1:]:
-                self._canonical[alias] = host
+                # We take the `alias` as a shortcut to `canonical` from another
+                # zone, which means it could be inaccessible even from the
+                # canonical host itself or its own zone.
+                #
+                # The creation of `alias` nodes are deferred until `arc()`.
+                self._canonical[alias] = canonical
 
-        root = self._add(name, NodeKind.ZONE)
+        root = self._add(name, False)
         for u in nodes:
             root.arc(u, 10)
             u.arc(root, 0)
 
-        zone = Zone(root, tuple(nodes))
+        zone = Zone(root, nodes)
         self._zones.append(zone)
 
         return zone
 
     def set_src(self, zone: Zone) -> None:
-        self._src.arc(zone.root, 0)
+        if (u := zone.root).dist != 0:
+            u.dist = 0
+            heapq.heappush(self._q, Dijkstra(0, u))
 
     def arc(self, frm: Zone, to: Zone | None, via: str = '', cost: int = 20) -> None:
         if via:
             try:
-                # via is an existing HOST or PROXY?
+                # A host?
                 u = self._nodes[via]
             except KeyError:
-                # Create a new PROXY node for an alias or an arbitrary hostname.
                 try:
+                    # An alias?
                     host = self._canonical[via]
+                    u = self._add(via)
+                    u.arc(host, 0, alias=True)
                 except KeyError:
+                    # An arbitrary hostname.
                     if not to:
                         raise ValueError(f'unknown {via=} without target zone')
                     host = to.root
-
-                u = self._add(via, NodeKind.PROXY)
-                u.arc(host, 0)
+                    u = self._add(via)
+                    u.arc(host, 0)
             else:
-                if u.kind == NodeKind.ZONE:
+                if not u.is_host:
                     raise ValueError(f'{via=} is a zone')
 
             frm.root.arc(u, cost)
@@ -140,7 +140,7 @@ class ZoneSet:
             frm.root.arc(to.root, cost)
 
     def route(self):
-        q = [Dijkstra(0, self._src)]
+        q = self._q
         while q:
             u = heapq.heappop(q).u
             if not u.vis:
@@ -150,7 +150,7 @@ class ZoneSet:
                     t = u.dist + e.cost
                     if v.dist > t:
                         v.dist = t
-                        v.prev = u
+                        v.prev = (u, e)
                         heapq.heappush(q, Dijkstra(t, v))
 
     def trace(self, name: str) -> Sequence[str] | None:
@@ -167,7 +167,7 @@ class ZoneSet:
     # all connecting options of the final hop to the destination host.
     def inject(self, conf: Config):
         for u in self._nodes.values():
-            if u.kind != NodeKind.ZONE and (way := u.find()):
+            if u.is_host and (way := u.find()):
                 target = u.name
                 final_hop = way[-1]
 
