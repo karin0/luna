@@ -6,6 +6,9 @@ set -eo pipefail
   "${LUNA_ENTRY:=~/.ssh/luna/luna.py}" \
   "${LUNA_ZONE:=~/.ssh/zone.ini}"
 
+# `-i` is passed even if LUNA_CONFIG is empty to disable host discovery.
+luna=("$LUNA_ENTRY" -x "$LUNA_SSH" -z "$LUNA_ZONE" -i "$LUNA_CONFIG")
+
 arg="$*"
 if [ -t 1 ] && [ -n "$arg" ]; then
   arg="\e[1;31m$arg\e[0m"
@@ -36,4 +39,12 @@ if [[ $VIRTUAL_ENV && $PATH =~ (^|:)"$VIRTUAL_ENV/bin"($|:) ]]; then
 fi
 
 echo -e "luna: connecting to $arg$at"
-LUNA_SSH_DIRECT=1 exec $py "$LUNA_ENTRY" -x "$LUNA_SSH" -z "$LUNA_ZONE" -- "$@"
+export LUNA_SSH_DIRECT=1
+
+if [ "$OS" = "Windows_NT" ]; then
+  # Windows doesn't support exec properly.
+  export FORCE_COLOR=1 TTY_INTERACTIVE=1
+  eval "exec $($py "${luna[@]}" -p -- "$@")"
+else
+  exec $py "${luna[@]}" -- "$@"
+fi

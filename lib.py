@@ -126,11 +126,8 @@ def resolve(host: str, args) -> tuple[str, str]:
     c = None
     if args.input_file:
         # The ssh_config is optional and only used for discovering hosts here.
-        try:
-            with open(args.input_file, encoding='utf-8') as fp:
-                c = Config(fp)
-        except FileNotFoundError:
-            pass
+        with open(args.input_file, encoding='utf-8') as fp:
+            c = Config(fp)
 
     cfg = ZoneConfig(args.zone_file, c)
 
