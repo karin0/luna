@@ -42,7 +42,9 @@ class Interfaces:
         self.ints = {
             intf.network: intf for intf in interfaces() if not intf.ip.is_loopback
         }
-        dbg('interfaces:', ', '.join(map(str, self.ints.values())))
+
+    def __str__(self) -> str:
+        return 'interfaces: ' + ', '.join(sorted(map(str, self.ints.values())))
 
     def check_subnet(
         self, net: IPv4Network, *, as_sub: bool = False, as_super: bool = False
@@ -75,7 +77,8 @@ if netifaces:
                         if not ip.is_loopback:
                             self._gws.add(ip)
 
-            dbg('gateways:', ', '.join(map(str, self._gws)))
+        def __str__(self) -> str:
+            return 'gateways: ' + ', '.join(sorted(map(str, self._gws)))
 
         def check_subnet(self, net: IPv4Network) -> IPv4Address | None:
             for gw in self._gws:

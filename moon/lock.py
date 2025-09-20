@@ -105,7 +105,8 @@ def wait_lock(file):
     try:
         lock.acquire(blocking=False)
     except BlockingIOError:
-        dbg(file + ': waiting for lock', must=True)
+        base = os.path.basename(file)
+        dbg(f'{base}: waiting for lock', must=True)
         waited = True
         lock.acquire()
     else:
