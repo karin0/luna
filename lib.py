@@ -1,10 +1,9 @@
 import itertools
 
-from typing import Iterable, TextIO
+from typing import Callable, Iterable, TextIO
 
 from moon.env import Environment
 from moon.syn import Config
-from moon.route import ZoneSet
 from moon.util import dbg, set_dbg, dbg_print
 
 from cfg import ZoneConfig
@@ -18,27 +17,23 @@ else:
     from rich.highlighter import ReprHighlighter
     from rich.theme import Theme
 
-    console.push_theme(
-        Theme(
-            {
-                'repr.luna_name': 'italic bright_yellow',
-                'repr.luna_zone': 'bright_blue',
-                'repr.luna_host': 'bold bright_red',
-            }
-        )
-    )
+    theme = {
+        'repr.luna_name': 'italic bright_yellow',
+        'repr.luna_zone': 'bright_blue',
+        'repr.luna_host': 'bold bright_red',
+    }
+    console.push_theme(Theme(theme))
     console.highlighter = ReprHighlighter()
 
     def register_highlights(rules: Iterable[tuple[str, Iterable[str]]]):
         console.highlighter.highlights[0:0] = [
-            re.compile(
-                r'\b(?P<luna_'
-                + name
-                + r'>'
-                + r'|'.join(map(re.escape, sorted(strs, key=len, reverse=True)))
-                + r')\b'
-            )
+            re.compile(r'\b(?P<luna_' + name + r'>' + r'|'.join(words) + r')\b')
             for name, strs in rules
+            if (
+                words := tuple(
+                    re.escape(s) for s in sorted(strs, key=len, reverse=True)
+                )
+            )
         ]
 
 
@@ -72,7 +67,7 @@ def do_sub(cmd):
     return cmd.strip()
 
 
-def generate(file: TextIO, args):
+def generate(args) -> Callable[[TextIO], None] | None:
     with open(args.input_file, encoding='utf-8') as fp:
         c = Config(fp)
 
@@ -80,12 +75,11 @@ def generate(file: TextIO, args):
     host = args.host
 
     if register_highlights:
-        highlights = [
+        highlights = (
             ('name', c.hosts()),
-            ('zone', cfg.zones.keys()),
-        ]
-        if host:
-            highlights.append(('host', (host,)))
+            ('zone', cfg.zones()),
+            ('host', (host,) if host else ()),
+        )
         register_highlights(highlights)
 
     if ctx:
@@ -95,31 +89,38 @@ def generate(file: TextIO, args):
             if v:
                 dbg(k + '\t| ' + v)
 
-    if host and (real_host := cfg.resolve_direct_mode(host)):
+    if host and (real_host := cfg.resolve_direct(host)):
         dbg('Direct for', real_host, must=True)
-        c.attach(host, real_host)
-    else:
-        g = cfg.route()
-        dbg_zones(g, host)
 
-        if host and g.trace(host) is None:
-            dbg('No route to host', host, must=True)
+    if args.output_file:
+        args.state = state = cfg.get_state().strip()
+        if args.last_state == state:
+            dbg('Up to date, skipping:', args.state)
+            return None
 
-        g.inject(c)
+    g = cfg.route(host)
 
-    if host:
+    for name in g.names():
+        c.attach('d.' + name, name)
+
+    g.inject(c)
+
+    if host := args.host:
         dbg_query(c, host)
 
-    if args.header:
-        print(args.header, file=file)
+    def writer(file: TextIO):
+        if args.header:
+            print(args.header, file=file)
 
-    if not file.isatty():
-        flush_dbg(file)
+        if not file.isatty():
+            flush_dbg(file)
 
-    c.print(file, separator=args.header)
+        c.print(file, separator=args.header)
 
-    if args.header:
-        print(args.header, file=file)
+        if args.header:
+            print(args.header, file=file)
+
+    return writer
 
 
 def resolve(host: str, args) -> tuple[str, str]:
@@ -133,30 +134,17 @@ def resolve(host: str, args) -> tuple[str, str]:
 
     if register_highlights:
         highlights = (
-            ('zone', cfg.zones.keys()),
+            ('name', c.hosts() if c else ()),
+            ('zone', cfg.zones()),
             ('host', (host,)),
         )
         register_highlights(highlights)
 
-    if real_host := cfg.resolve_direct_mode(host):
+    if real_host := cfg.resolve_direct(host):
         dbg('Direct for', real_host, must=True)
         return real_host, ''
 
-    g = cfg.route()
-    dbg_zones(g, host)
-
-    if res := g.resolve(host):
-        return res
-
-    dbg('No route to host', host, must=True)
-    return host, ''
-
-
-def dbg_zones(g: ZoneSet, host: str):
-    for z, dist, way in g.iter_zones():
-        if way is not None:
-            must = host and g.contains(z, host)
-            dbg('[' + ', '.join(way) + ']', '->', z, f'({dist})', must=must)
+    return cfg.route(host).resolve(host) or (host, '')
 
 
 def dbg_query(c: Config, host: str):

@@ -1,6 +1,6 @@
 import heapq
+import functools
 from typing import Iterable, Sequence, NamedTuple
-from enum import Enum
 from .syn import Config
 
 INF = 0x3F3F3F3F
@@ -13,42 +13,37 @@ class Arc(NamedTuple):
 
 
 class Node:
-    def __init__(self, name: str, is_host: bool) -> None:
+    def __init__(self, name: str, zone: 'Zone | None') -> None:
         self.name = name
-        self.is_host = is_host
+        self.zone = zone
         self.adj: list[Arc] = []
         self.dist = INF
         self.prev: tuple[Node, Arc] | None = None
         self.vis = False
-        self._path = None
+        self.traced = False
 
     def arc(self, to: 'Node', cost: int, *, alias: bool = False) -> None:
         self.adj.append(Arc(to, cost, alias))
 
+    @functools.cache
     def _find(self) -> Sequence[str] | None:
         if prev := self.prev:
             prev, e = prev
-            r = prev.find()
+            r = prev._find()
 
-            if self.is_host and not e.alias:
+            if self.name and not e.alias:
                 # `prev` is not an alias of `self`.
                 return (*r, self.name)
 
             return r
 
-        return (self.name,) if self.is_host else ()
+        return (self.name,) if self.name else ()
 
     def find(self) -> Sequence[str] | None:
-        if self.dist >= INF:
-            return None
-
-        if self._path is None:
-            self._path = self._find()
-
-        return self._path
+        return self._find() if self.dist < INF else None
 
     def __str__(self) -> str:
-        return '<' + self.kind.name[0] + ':' + self.name + '>'
+        return '<' + self.name + '>'
 
     __repr__ = __str__
 
@@ -56,13 +51,19 @@ class Node:
 class Zone:
     def __init__(self, root: Node, hosts: Sequence[Node]) -> None:
         self.root = root
-        self.hosts = frozenset(hosts)
-        self.priv = None
+        self.hosts = hosts
 
-    def __str__(self) -> str:
-        return f'{{{self.root.name}: {', '.join(h.name for h in self.hosts)}}}'
+    @property
+    def dist(self) -> int:
+        return self.root.dist
 
-    __repr__ = __str__
+    @property
+    def path(self) -> Sequence[str] | None:
+        return self.root.find()
+
+    @property
+    def traced(self) -> bool:
+        return self.root.traced
 
 
 class Dijkstra(NamedTuple):
@@ -75,20 +76,24 @@ class Dijkstra(NamedTuple):
 
 class ZoneSet:
     def __init__(self) -> None:
-        self._zones: list[Zone] = []
         self._nodes: dict[str, Node] = {}
         self._canonical: dict[str, Node] = {}
         self._q: list[Dijkstra] = []
 
-    def _add(self, name: str, is_host: bool = True) -> Node:
-        assert name not in self._nodes
-        self._nodes[name] = u = Node(name, is_host)
+    def _add(self, name: str, zone: Zone) -> Node:
+        u = Node(name, zone)
+        if name:
+            assert name not in self._nodes
+            self._nodes[name] = u
+
         return u
 
-    def add(self, name: str, hosts: Sequence[Sequence[str]]) -> Zone:
+    def add(self, hosts: Sequence[Sequence[str]]) -> Zone:
+        root = self._add('', None)
         nodes: list[Node] = []
+        zone = Zone(root, nodes)
         for aliases in hosts:
-            canonical = self._add(aliases[0])
+            canonical = self._add(aliases[0], zone)
             nodes.append(canonical)
             for alias in aliases[1:]:
                 # We take the `alias` as a shortcut to `canonical` from another
@@ -98,13 +103,10 @@ class ZoneSet:
                 # The creation of `alias` nodes are deferred until `arc()`.
                 self._canonical[alias] = canonical
 
-        root = self._add(name, False)
+        # Zone roots are invisible on the paths.
         for u in nodes:
             root.arc(u, 10)
-            u.arc(root, 0)
-
-        zone = Zone(root, nodes)
-        self._zones.append(zone)
+            u.arc(root, 0, alias=True)
 
         return zone
 
@@ -122,18 +124,15 @@ class ZoneSet:
                 try:
                     # An alias?
                     host = self._canonical[via]
-                    u = self._add(via)
+                    u = self._add(via, host.zone)
                     u.arc(host, 0, alias=True)
                 except KeyError:
                     # An arbitrary hostname.
                     if not to:
                         raise ValueError(f'unknown {via=} without target zone')
                     host = to.root
-                    u = self._add(via)
+                    u = self._add(via, None)
                     u.arc(host, 0)
-            else:
-                if not u.is_host:
-                    raise ValueError(f'{via=} is a zone')
 
             frm.root.arc(u, cost)
         else:
@@ -154,7 +153,16 @@ class ZoneSet:
                         heapq.heappush(q, Dijkstra(t, v))
 
     def trace(self, name: str) -> Sequence[str] | None:
-        return self._nodes[name].find()
+        u = self._nodes[name]
+        if (path := u.find()) is None:
+            return None
+
+        u.traced = True
+        while t := u.prev:
+            u, _ = t
+            u.traced = True
+
+        return path
 
     # ssh <name> -> ssh <final_hop> -J <jumps>
     # <final_hop> might be an alias of <name> if <name> is a canonical host.
@@ -167,8 +175,7 @@ class ZoneSet:
     # all connecting options of the final hop to the destination host.
     def inject(self, conf: Config):
         for u in self._nodes.values():
-            if u.is_host and (way := u.find()):
-                target = u.name
+            if (target := u.name) and (way := u.find()):
                 final_hop = way[-1]
 
                 # The final hop does not need ProxyJump to itself, we connect
@@ -181,11 +188,8 @@ class ZoneSet:
                     pass
                 else:
                     # TODO: respect the existing ProxyJump options for dest
-                    conf.add_host((target,), (f'# {way}', f'ProxyJump {last_jump}'))
-
-    def iter_zones(self) -> Iterable[tuple[Zone, int, Sequence[str] | None]]:
-        for zone in sorted(self._zones, key=lambda z: z.root.dist):
-            yield zone, zone.root.dist, zone.root.find()
+                    way = '[' + ', '.join(way) + ']'
+                    conf.add_host((target,), (f'ProxyJump {last_jump}',), comment=way)
 
     def contains(self, zone: Zone, name: str) -> bool:
         name = self._canonical.get(name, name)
@@ -193,8 +197,13 @@ class ZoneSet:
             u = self._nodes[name]
         except KeyError:
             return False
-
-        return u in zone.hosts
+        return u.zone is zone
 
     def __contains__(self, name: str) -> bool:
         return name in self._nodes
+
+    def names(self) -> Iterable[str]:
+        yield from self._nodes.keys()
+        for k in self._canonical.keys():
+            if k not in self._nodes:
+                yield k

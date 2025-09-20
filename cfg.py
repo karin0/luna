@@ -1,13 +1,15 @@
 import os
 import datetime
+import functools
 import importlib.util
 
+from typing import Iterable, Sequence
 from configparser import ConfigParser
 from ipaddress import AddressValueError, IPv4Address, IPv4Network
 
 from moon.intf import Interfaces
 from moon.route import Zone, ZoneSet
-from moon.util import trace
+from moon.util import dbg, trace
 from moon.syn import Config
 
 if not os.environ.get('LUNA_STRICT_SUBNET'):
@@ -19,34 +21,34 @@ if not os.environ.get('LUNA_STRICT_SUBNET'):
         pass
 
 interfaces = None
-timezone = None
 
 
-def check_timezone(hours: int) -> bool:
-    global timezone
-    if timezone is None:
-        timezone = (
-            datetime.datetime.now(datetime.timezone.utc)
-            .astimezone()
-            .utcoffset()
-            .total_seconds()
-        )
-
-    return timezone == hours * 3600
+@functools.cache
+def get_timezone() -> int:
+    return int(
+        datetime.datetime.now(datetime.timezone.utc)
+        .astimezone()
+        .utcoffset()
+        .total_seconds()
+    )
 
 
-def in_zone(cfg: ConfigParser, sect: str, zone: Zone) -> bool:
+@functools.cache
+def get_interfaces() -> Interfaces:
+    trace('>Interfaces')
+    interfaces = Interfaces()
+    trace('Interfaces')
+    dbg(interfaces)
+    return interfaces
+
+
+def in_zone(tz: float | None, subnets: Sequence[IPv4Network]) -> bool:
     # AND for timezone and subnet, so no constraint means always hits.
-    if tz := cfg.get(sect, 'timezone', fallback=None):
-        if not check_timezone(float(tz)):
-            return False
+    if tz is not None and get_timezone() != tz * 3600:
+        return False
 
-    if subnets := zone.priv:
-        global interfaces
-        if not interfaces:
-            trace('>Interfaces')
-            interfaces = Interfaces()
-            trace('Interfaces')
+    if subnets:
+        interfaces = get_interfaces()
 
         # OR for all subnets.
         return any(interfaces.check_subnet(s) for s in subnets)
@@ -77,8 +79,10 @@ class ZoneConfig:
         self._hooks = hooks = []
         self._g = g = ZoneSet()
 
-        self.zones: dict[str, Zone] = {}
-        zones = self.zones
+        self._zones: dict[str, Zone] = {}
+        self._conds: list[tuple[float, tuple[IPv4Network, ...]]] = []
+
+        zones = self._zones
         zone_stubs = []
         vis = set()
 
@@ -148,8 +152,8 @@ class ZoneConfig:
                     break
 
         for sect, hosts, subnets in zone_stubs:
-            zones[sect] = zone = g.add(sect, hosts)
-            zone.priv = subnets
+            zones[sect] = zone = g.add(hosts)
+            self._conds.append((cfg.getfloat(sect, 'timezone', fallback=None), subnets))
 
             if hook := cfg.get(sect, 'hook', fallback=None):
                 hooks.append(load_hook(hook))
@@ -196,13 +200,63 @@ class ZoneConfig:
                 else:
                     g.arc(zone, to, via, cost)
 
-    def route(self):
+    def get_state(self) -> str:
+        r = []
+        if any(tz is not None for tz, _ in self._conds):
+            r.append('tz:' + str(get_timezone()))
+        if any(subnets for _, subnets in self._conds):
+            r.append('if:' + str(get_interfaces()))
+        return '|'.join(r)
+
+    def route(self, host: str | None) -> ZoneSet:
         g = self._g
-        for sect, zone in self.zones.items():
-            if in_zone(self._cfg, sect, zone):
+        for zone, (tz, subnets) in zip(self._zones.values(), self._conds):
+            if in_zone(tz, subnets):
                 g.set_src(zone)
 
         g.route()
+
+        host_way = None
+        if host:
+            try:
+                host_way = g.trace(host)
+            except KeyError:
+                pass
+            else:
+                if host_way is None:
+                    dbg('No route to', host, must=True)
+
+        specs = []
+        for name, zone in sorted(
+            self._zones.items(), key=lambda t: t[1].dist, reverse=True
+        ):
+            if (way := zone.path) is not None:
+                if must := zone.traced:
+                    if (
+                        host_way is not None
+                        and not g.contains(zone, host)
+                        and len(way) < len(host_way)
+                        and host_way[: len(way)] == way
+                    ):
+                        way = (
+                            '['
+                            + ', '.join(way)
+                            + '; '
+                            + ', '.join(host_way[len(way) :])
+                            + ']'
+                        )
+                        host_way = None
+                    else:
+                        way = '[' + ', '.join(way) + ']'
+                else:
+                    way = '[' + ', '.join(way) + ']'
+
+                z = f'{{{name}: {', '.join(h.name for h in zone.hosts)}}}'
+                specs.append((way, z, zone.dist, must))
+
+        for way, z, dist, must in reversed(specs):
+            dbg(way, '->', z, f'({dist})', must=must)
+
         return g
 
     def run_hooks(self, name, *args, **kwargs):
@@ -210,13 +264,13 @@ class ZoneConfig:
             if f := getattr(h, name, None):
                 f(*args, **kwargs)
 
-    def _has_host(self, name: str) -> bool:
-        return name in self._g and name not in self.zones
-
-    def resolve_direct_mode(self, host: str) -> str | None:
-        if not self._has_host(host):
-            if (real := host.removeprefix('d.')) != host and self._has_host(real):
+    def resolve_direct(self, host: str) -> str | None:
+        if host not in self._g:
+            if (real := host.removeprefix('d.')) != host and real in self._g:
                 return real
 
             # Direct for the unmanaged host.
             return host
+
+    def zones(self) -> Iterable[str]:
+        return self._zones.keys()

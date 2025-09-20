@@ -10,28 +10,52 @@ SUB_REG = r'\{\{(.+?)\}\}'
 
 class Directive:
     def __init__(self, line: str):
-        self.parts = p = shlex.split(line, comments=True)
-        self.opt = p[0].lower().split('=', maxsplit=1)[0] if p else ''
+        if parts := shlex.split(line, comments=True):
+            opt = parts[0]
+            if (p := opt.find('=')) >= 0:
+                opt = opt[:p]
+                parts = (opt, *shlex.split(opt[p + 1 :]), *parts[1:])
+        else:
+            opt = ''
+        self.values = tuple(parts[1:])
+        self.opt = opt.lower()
 
     def __str__(self) -> str:
         # Remove comments, leading and trailing spaces, and unnecessary
         # quotes.
-        return shlex.join(self.parts)
+        return self.opt + ' ' + shlex.join(self.values)
 
     def __bool__(self) -> bool:
-        return bool(self.parts)
+        return bool(self.opt)
+
+    def __hash__(self) -> int:
+        return hash((self.opt, self.values))
+
+    def __eq__(self, other) -> bool:
+        return (
+            isinstance(other, Directive)
+            and self.opt == other.opt
+            and self.values == other.values
+        )
 
 
 blk_no = 0
 
 
 class Block:
-    def __init__(self, header: str = '', hosts: Sequence[str] = (), ext: bool = False):
+    def __init__(
+        self,
+        header: str = '',
+        hosts: Sequence[str] = (),
+        ext: bool = False,
+        comment: str = '',
+    ):
         global blk_no
         self.header = header
-        self.hosts = hosts
+        self.hosts = list(hosts)
         self.lines: list[str] = []
         self.ext = ext
+        self.comment = comment
         self.no = blk_no
         blk_no += 1
 
@@ -92,6 +116,7 @@ class Config:
         self._wildcards: list[Block] = []
         self._blks: list[Block] = []
         self._ext_blks: list[Block] = []
+        self._ext_cache: dict[tuple, Block] = {}
         self._query_opts = set()
         default_blk = blk = Block(hosts=('*',))
 
@@ -104,7 +129,7 @@ class Config:
             line = line.rstrip()
             d = Directive(line)
             if d.opt == 'host':
-                flush(Block(line, d.parts[1:]))
+                flush(Block(line, d.values))
             elif d.opt == 'match':
                 flush(Block(line))
             elif line.lstrip():
@@ -129,12 +154,23 @@ class Config:
 
     def _print(self, blks: Iterable[Block], file: TextIO) -> None:
         for blk in blks:
-            print(blk.header, file=file)
+            if comment := ' '.join(blk.comment.split()):
+                file.write(blk.header)
+                file.write('  # ')
+                print(comment, file=file)
+            else:
+                print(blk.header, file=file)
+            last_ref = None
             for line in blk.lines:
                 if blk.ext:
                     file.write('  ')
-                if isinstance(line, Line) and (header := line.blk.header.strip()):
-                    line += '  # ' + header
+                if isinstance(line, Line):
+                    if line.blk is not last_ref:
+                        last_ref = line.blk
+                        if header := line.blk.header.strip():
+                            line += '  # ' + header
+                else:
+                    last_ref = None
                 print(line, file=file)
             print(file=file)
 
@@ -170,16 +206,32 @@ class Config:
     # Attach `name` as an alias of `host`.
     def attach(self, name: str, host: str) -> None:
         if name != host:
-            lines = [f'# Attached to {host}', *self._query(host)]
+            old = set(l.dir for l in self._query(name))
+            lines = [l for l in self._query(host) if l.dir not in old]
             if 'hostname' not in self._query_opts:
                 lines.append(f'Hostname {host}')
-            self.add_host((name,), lines)
+            self.add_host((name,), lines, comment=f'inherits from {host}')
 
-    def add_host(self, hosts: Sequence[str], lines: Sequence[str]) -> Block:
-        blk = Block('Host ' + ' '.join(hosts), hosts, ext=True)
-        for line in lines:
-            blk.push(line)
-        self._push_blk(blk, ext=True)
+    # For the cache semantics, `hosts` should not contain wildcards.
+    def add_host(
+        self, hosts: Sequence[str], lines: Sequence[str], comment: str = ''
+    ) -> Block:
+        key = tuple(lines)
+        if blk := self._ext_cache.get(key):
+            blk.header += ' ' + ' '.join(hosts)
+            blk.hosts.extend(hosts)
+            if comment:
+                if blk.comment and blk.comment != comment:
+                    blk.comment += '; ' + comment
+                else:
+                    blk.comment = comment
+        else:
+            header = 'Host ' + ' '.join(hosts)
+            blk = Block(header, hosts, ext=True, comment=comment)
+            for line in lines:
+                blk.push(line)
+            self._push_blk(blk, ext=True)
+            self._ext_cache[key] = blk
         return blk
 
     def _query(self, host: str) -> Iterable[Line]:
@@ -221,8 +273,8 @@ class Config:
             for blk in blks:
                 for line in blk.trimmed():
                     d = line.dir
-                    if d.opt == 'hostname' and len(d.parts) > 1:
-                        yield host, d.parts[1]
+                    if d.opt == 'hostname' and d.values:
+                        yield host, d.values[0]
                         break
                 else:
                     continue
