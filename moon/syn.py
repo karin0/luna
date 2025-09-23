@@ -1,6 +1,7 @@
 import re
 import sys
 import shlex
+import functools
 from fnmatch import fnmatch
 from collections import defaultdict
 from typing import Iterable, Sequence, TextIO, Callable
@@ -17,13 +18,22 @@ class Directive:
                 parts = (opt, *shlex.split(opt[p + 1 :]), *parts[1:])
         else:
             opt = ''
+        self._opt = opt
         self.values = tuple(parts[1:])
-        self.opt = opt.lower()
+
+    @classmethod
+    @functools.cache
+    def parse(cls, line: str) -> 'Directive':
+        return cls(line)
+
+    @property
+    def opt(self) -> str:
+        return self._opt.lower()
 
     def __str__(self) -> str:
         # Remove comments, leading and trailing spaces, and unnecessary
         # quotes.
-        return self.opt + ' ' + shlex.join(self.values)
+        return self._opt + ' ' + shlex.join(self.values)
 
     def __bool__(self) -> bool:
         return bool(self.opt)
@@ -78,7 +88,7 @@ class Block:
         for line in self.lines:
             if isinstance(line, Line):
                 yield line
-            elif d := Directive(line):
+            elif d := Directive.parse(line):
                 yield Line(str(d), self, d)
 
     def __bool__(self):
@@ -91,6 +101,27 @@ class Block:
         return f'Block({flag}{self.no}: {hosts} | {lines})'
 
     __repr__ = __str__
+
+    def print(self, file: TextIO) -> None:
+        if comment := ' '.join(self.comment.split()):
+            file.write(self.header)
+            file.write('  # ')
+            print(comment, file=file)
+        else:
+            print(self.header, file=file)
+        last_ref = None
+        for line in self.lines:
+            if self.ext:
+                file.write('  ')
+            if isinstance(line, Line):
+                if line.blk is not last_ref:
+                    last_ref = line.blk
+                    if header := line.blk.header.strip():
+                        line += '  # ' + header
+            else:
+                last_ref = None
+            print(line, file=file)
+        print(file=file)
 
 
 class Line(str):
@@ -127,7 +158,7 @@ class Config:
 
         for line in fp:
             line = line.rstrip()
-            d = Directive(line)
+            d = Directive.parse(line)
             if d.opt == 'host':
                 flush(Block(line, d.values))
             elif d.opt == 'match':
@@ -152,33 +183,15 @@ class Config:
                 else:
                     self._host_map[host].append(blk)
 
-    def _print(self, blks: Iterable[Block], file: TextIO) -> None:
-        for blk in blks:
-            if comment := ' '.join(blk.comment.split()):
-                file.write(blk.header)
-                file.write('  # ')
-                print(comment, file=file)
-            else:
-                print(blk.header, file=file)
-            last_ref = None
-            for line in blk.lines:
-                if blk.ext:
-                    file.write('  ')
-                if isinstance(line, Line):
-                    if line.blk is not last_ref:
-                        last_ref = line.blk
-                        if header := line.blk.header.strip():
-                            line += '  # ' + header
-                else:
-                    last_ref = None
-                print(line, file=file)
-            print(file=file)
+    def print(self, file: TextIO = sys.stdout, separator: str | None = None) -> None:
+        for blk in self._ext_blks:
+            blk.print(file)
 
-    def print(self, file: TextIO = sys.stdout, separator=None) -> None:
-        self._print(self._ext_blks, file)
-        if separator:
+        if separator is not None:
             print(separator, file=file)
-        self._print(self._blks, file)
+
+        for blk in self._blks:
+            blk.print(file)
 
     def sub(self, repl: Callable[[str], str]) -> dict[str, str]:
         res = {}
@@ -218,13 +231,21 @@ class Config:
     ) -> Block:
         key = tuple(lines)
         if blk := self._ext_cache.get(key):
-            blk.header += ' ' + ' '.join(hosts)
-            blk.hosts.extend(hosts)
             if comment:
                 if blk.comment and blk.comment != comment:
                     blk.comment += '; ' + comment
                 else:
                     blk.comment = comment
+
+            old_hosts = set(blk.hosts)
+            if hosts := tuple(h for h in hosts if h not in old_hosts):
+                blk.header += ' ' + ' '.join(hosts)
+                blk.hosts.extend(hosts)
+                for host in hosts:
+                    if old := self._host_map.get(host):
+                        old.append(blk)
+                    else:
+                        self._host_map[host] = [blk]
         else:
             header = 'Host ' + ' '.join(hosts)
             blk = Block(header, hosts, ext=True, comment=comment)
@@ -232,6 +253,7 @@ class Config:
                 blk.push(line)
             self._push_blk(blk, ext=True)
             self._ext_cache[key] = blk
+
         return blk
 
     def _query(self, host: str) -> Iterable[Line]:
@@ -242,12 +264,11 @@ class Config:
             if blk not in blks and blk.test(host):
                 blks.add(blk)
 
-        # Sort and unique. Extended blocks prioritized.
-        blks = sorted(blks, key=lambda blk: (not blk.ext, blk.no))
-
         vis = self._query_opts
         vis.clear()
-        for blk in blks:
+
+        # Sort and unique. Extended blocks prioritized.
+        for blk in sorted(blks, key=lambda blk: (not blk.ext, blk.no)):
             for line in blk.trimmed():
                 # SSH takes the first occurrence of an option.
                 if (opt := line.dir.opt) in ('identityfile', 'certificatefile'):

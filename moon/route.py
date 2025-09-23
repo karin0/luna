@@ -188,7 +188,7 @@ class ZoneSet:
                     pass
                 else:
                     # TODO: respect the existing ProxyJump options for dest
-                    way = '[' + ', '.join(way) + ']'
+                    way = '[' + ', '.join(way[:-1]) + ']'
                     conf.add_host((target,), (f'ProxyJump {last_jump}',), comment=way)
 
     def contains(self, zone: Zone, name: str) -> bool:
