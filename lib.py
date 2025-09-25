@@ -1,6 +1,6 @@
 import itertools
 
-from typing import Callable, Iterable, TextIO
+from typing import Callable, Iterable, TextIO, NamedTuple
 
 from moon.env import Environment
 from moon.syn import Config
@@ -67,7 +67,12 @@ def do_sub(cmd):
     return cmd.strip()
 
 
-def generate(args) -> Callable[[TextIO], None] | None:
+class Writer(NamedTuple):
+    write: Callable[[TextIO], None]
+    write_trimmed: Callable[[TextIO], None]
+
+
+def generate(args) -> Writer | None:
     with open(args.input_file, encoding='utf-8') as fp:
         c = Config(fp)
 
@@ -108,19 +113,19 @@ def generate(args) -> Callable[[TextIO], None] | None:
     if host := args.host:
         dbg_query(c, host)
 
-    def writer(file: TextIO):
+    def write(file: TextIO, cfg: Config = c):
         if args.header:
             print(args.header, file=file)
 
         if not file.isatty():
             flush_dbg(file)
 
-        c.print(file, separator=args.header)
+        cfg.print(file, separator=args.header)
 
         if args.header:
             print(args.header, file=file)
 
-    return writer
+    return Writer(write, lambda file: write(file, c.select(g.hosts())))
 
 
 def resolve(host: str, args) -> tuple[str, str]:

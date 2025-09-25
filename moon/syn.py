@@ -142,13 +142,18 @@ class Line(str):
 #
 # For complex configurations, please consider using the wrapper mode.
 class Config:
-    def __init__(self, fp: TextIO) -> None:
+    def __init__(self, fp: TextIO | None = None) -> None:
         self._host_map: defaultdict[str, list[Block]] = defaultdict(list)
         self._wildcards: list[Block] = []
         self._blks: list[Block] = []
         self._ext_blks: list[Block] = []
         self._ext_cache: dict[tuple, Block] = {}
         self._query_opts = set()
+
+        if fp:
+            self.load(fp)
+
+    def load(self, fp: TextIO) -> None:
         default_blk = blk = Block(hosts=('*',))
 
         def flush(new_blk):
@@ -187,7 +192,7 @@ class Config:
         for blk in self._ext_blks:
             blk.print(file)
 
-        if separator is not None:
+        if separator is not None and self._ext_blks and self._blks:
             print(separator, file=file)
 
         for blk in self._blks:
@@ -300,3 +305,9 @@ class Config:
                 else:
                     continue
                 break
+
+    def select(self, hosts: Iterable[str]) -> 'Config':
+        cfg = Config(None)
+        for host in hosts:
+            cfg.add_host((host,), self.query(host))
+        return cfg

@@ -204,6 +204,7 @@ class ZoneSet:
 
     def names(self) -> Iterable[str]:
         yield from self._nodes.keys()
-        for k in self._canonical.keys():
-            if k not in self._nodes:
-                yield k
+        yield from (k for k in self._canonical.keys() if k not in self._nodes)
+
+    def hosts(self) -> Iterable[str]:
+        return (u.name for u in self._nodes.values() if u.name not in self._canonical)

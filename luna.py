@@ -3,7 +3,9 @@ import os
 import sys
 import time
 import argparse
+from io import StringIO
 from typing import Iterable, Sequence
+from contextlib import contextmanager
 
 from moon.util import dbg
 
@@ -54,11 +56,26 @@ def rewrite(argv: list[str], args) -> Sequence[str]:
     return argv
 
 
+@contextmanager
+def open_output(file: str | None):
+    if file and file != '-':
+        buf = StringIO()
+        yield buf
+        buf = buf.getvalue()
+
+        # Only write the file at the last moment to avoid truncating it on error.
+        with open(file, 'w', encoding='utf-8') as fp:
+            fp.write(buf)
+    else:
+        yield sys.stdout
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input-file', default='config')
     parser.add_argument('-z', '--zone-file', default='zone.ini')
     parser.add_argument('-o', '--output-file')
+    parser.add_argument('-t', '--trimmed')
     parser.add_argument('-H', '--header')
     parser.add_argument('-f', '--force', action='count', default=0)
     parser.add_argument('-x', '--ssh-executable')
@@ -100,7 +117,6 @@ def main():
 
     from moon.lock import wait_lock
     from lib import preview, generate
-    from io import StringIO
 
     a.host = a.host_or_args[0] if a.host_or_args else None
     a.state = a.last_state = None
@@ -109,8 +125,8 @@ def main():
         file = a.output_file = None
 
     if not file or a.force > 1:
-        if writer := generate(a):
-            writer(open(file, 'w', encoding='utf-8') if file else sys.stdout)
+        if r := generate(a):
+            r.write(open(file, 'w', encoding='utf-8') if file else sys.stdout)
         return
 
     with wait_lock(file + '.lock') as waited:
@@ -149,14 +165,13 @@ def main():
                 if mtime >= dep_mtime:
                     a.last_state = last_state
 
-        if writer := generate(a):
-            buf = StringIO()
-            writer(buf)
-            buf = buf.getvalue()
+        if r := generate(a):
+            with open_output(file) as fp:
+                r.write(fp)
 
-            # Only write the file at the last moment to avoid truncating it on error.
-            with open(file, 'w', encoding='utf-8') as fp:
-                fp.write(buf)
+                if a.trimmed:
+                    with open_output(file + '.stub') as fp:
+                        r.write_trimmed(fp)
 
             if (state := a.state) and state != last_state:
                 with open(state_file, 'w', encoding='utf-8') as fp:
