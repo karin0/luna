@@ -78,10 +78,11 @@ def generate(args) -> Writer | None:
 
     cfg = ZoneConfig(args.zone_file, c)
     host = args.host
+    cfg_hosts = tuple(c.hosts())
 
     if register_highlights:
         highlights = (
-            ('name', c.hosts()),
+            ('name', cfg_hosts),
             ('zone', cfg.zones()),
             ('host', (host,) if host else ()),
         )
@@ -125,7 +126,11 @@ def generate(args) -> Writer | None:
         if args.header:
             print(args.header, file=file)
 
-    return Writer(write, lambda file: write(file, c.select(g.hosts())))
+    def write_trimmed(file: TextIO, cfg: Config = c):
+        aliases = frozenset(g.aliases())
+        write(file, cfg.select(h for h in cfg_hosts if h not in aliases))
+
+    return Writer(write, write_trimmed)
 
 
 def resolve(host: str, args) -> tuple[str, str]:

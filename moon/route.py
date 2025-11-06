@@ -208,3 +208,6 @@ class ZoneSet:
 
     def hosts(self) -> Iterable[str]:
         return (u.name for u in self._nodes.values() if u.name not in self._canonical)
+
+    def aliases(self) -> Iterable[str]:
+        return self._canonical.keys()
