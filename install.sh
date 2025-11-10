@@ -16,13 +16,20 @@ while true; do
   esac
 done
 
-arg="$*"
-if [ -t 1 ] && [ -n "$arg" ]; then
+
+if [ -v LUNA_MUTE ]; then
+  dbg() { :; }
+  arg=
+else
+  dbg() { echo -e "luna: $*"; }
+  arg="$*"
+  if [ -t 1 ] && [ -n "$arg" ]; then
   arg="\e[1;31m$arg\e[0m"
+  fi
 fi
 
 if [ -n "$LUNA_SSH_DIRECT" ]; then
-  echo -e "luna: direct to $arg"
+  dbg "direct to $arg"
   exec cp -- sshconfig "$file"
 fi
 
@@ -38,7 +45,7 @@ fi
 
 # https://stackoverflow.com/a/37216784
 if [[ $VIRTUAL_ENV && $PATH =~ (^|:)"$VIRTUAL_ENV/bin"($|:) ]]; then
-  echo "luna: detaching from $VIRTUAL_ENV"
+  dbg "detaching from $VIRTUAL_ENV"
   PATH=${PATH%":$VIRTUAL_ENV/bin"}
   PATH=${PATH#"$VIRTUAL_ENV/bin:"}
   PATH=${PATH//":$VIRTUAL_ENV/bin:"/}
@@ -46,9 +53,9 @@ if [[ $VIRTUAL_ENV && $PATH =~ (^|:)"$VIRTUAL_ENV/bin"($|:) ]]; then
 fi
 
 if [ -n "$arg" ]; then
-  echo -e "luna: connecting to $arg$at"
+  dbg "connecting to $arg$at"
 else
-  echo "luna: generating $file$at"
+  dbg "generating $file$at"
 fi
 
 header="# Generated from 🥮$at at $(date). DO NOT EDIT!"

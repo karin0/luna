@@ -1,7 +1,12 @@
 import os
 import sys
 
-if sys.stderr.isatty():
+if 'LUNA_MUTE' in os.environ:
+
+    def dbg_print(*args, must=False):
+        pass
+
+elif sys.stderr.isatty():
     try:
         from rich.console import Console
     except ImportError:
