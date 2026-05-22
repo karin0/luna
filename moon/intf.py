@@ -1,4 +1,5 @@
 import os
+
 from ipaddress import AddressValueError, IPv4Address, IPv4Interface, IPv4Network
 
 try:
@@ -13,8 +14,8 @@ def interfaces():
     if not netifaces or os.name == 'nt':
         # Calling `netifaces.ifaddresses()` for every interface seems slower than
         # `ipconfig` on Windows.
-        import subprocess
         import re
+        import subprocess
 
         if os.name == 'nt':
             dbg("interfaces: netifaces not found on 'nt', falling back to 'ipconfig'")
@@ -39,9 +40,7 @@ def interfaces():
 
 class Interfaces:
     def __init__(self) -> None:
-        self.ints = {
-            intf.network: intf for intf in interfaces() if not intf.ip.is_loopback
-        }
+        self.ints = {intf.network: intf for intf in interfaces() if not intf.ip.is_loopback}
 
     def __str__(self) -> str:
         return 'interfaces: ' + ', '.join(sorted(map(str, self.ints.values())))
@@ -55,9 +54,7 @@ class Interfaces:
             pass
         if as_sub or as_super:
             for intf_net, intf in self.ints.items():
-                if (as_sub and net.subnet_of(intf_net)) or (
-                    as_super and intf_net.subnet_of(net)
-                ):
+                if (as_sub and net.subnet_of(intf_net)) or (as_super and intf_net.subnet_of(net)):
                     return intf
 
 

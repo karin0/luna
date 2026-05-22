@@ -1,19 +1,24 @@
-import heapq
 import functools
-from typing import Iterable, Sequence, NamedTuple
+import heapq
+
+from typing import TYPE_CHECKING, NamedTuple
+
 from .syn import Config
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 INF = 0x3F3F3F3F
 
 
 class Arc(NamedTuple):
-    to: 'Node'
+    to: Node
     cost: int
     alias: bool
 
 
 class Node:
-    def __init__(self, name: str, zone: 'Zone | None') -> None:
+    def __init__(self, name: str, zone: Zone | None) -> None:
         self.name = name
         self.zone = zone
         self.adj: list[Arc] = []
@@ -22,7 +27,7 @@ class Node:
         self.vis = False
         self.traced = False
 
-    def arc(self, to: 'Node', cost: int, *, alias: bool = False) -> None:
+    def arc(self, to: Node, cost: int, *, alias: bool = False) -> None:
         self.adj.append(Arc(to, cost, alias))
 
     @functools.cache
@@ -68,9 +73,9 @@ class Zone:
 
 class Dijkstra(NamedTuple):
     dist: int
-    u: 'Node'
+    u: Node
 
-    def __lt__(self, v: 'Dijkstra') -> bool:
+    def __lt__(self, v: Dijkstra) -> bool:
         return self.dist < v.dist
 
 
@@ -126,10 +131,10 @@ class ZoneSet:
                     host = self._canonical[via]
                     u = self._add(via, host.zone)
                     u.arc(host, 0, alias=True)
-                except KeyError:
+                except KeyError as e:
                     # An arbitrary hostname.
                     if not to:
-                        raise ValueError(f'unknown {via=} without target zone')
+                        raise ValueError(f'unknown {via=} without target zone') from e
                     host = to.root
                     u = self._add(via, None)
                     u.arc(host, 0)
@@ -204,7 +209,7 @@ class ZoneSet:
 
     def names(self) -> Iterable[str]:
         yield from self._nodes.keys()
-        yield from (k for k in self._canonical.keys() if k not in self._nodes)
+        yield from (k for k in self._canonical if k not in self._nodes)
 
     def hosts(self) -> Iterable[str]:
         return (u.name for u in self._nodes.values() if u.name not in self._canonical)

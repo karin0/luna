@@ -20,9 +20,7 @@ elif sys.stderr.isatty():
         console = Console(file=sys.stderr)
 
         def dbg_print(*args, must=False):
-            console.print(
-                *(escape(str(x)) for x in args), style=None if must else 'dim'
-            )
+            console.print(*(escape(str(x)) for x in args), style=None if must else 'dim')
 
 else:
 

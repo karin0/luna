@@ -1,12 +1,14 @@
 import itertools
 
-from typing import Callable, Iterable, TextIO, NamedTuple
-
-from moon.env import Environment
-from moon.syn import Config
-from moon.util import dbg, set_dbg, dbg_print
+from typing import TYPE_CHECKING, NamedTuple, TextIO
 
 from cfg import ZoneConfig
+from moon.env import Environment
+from moon.syn import Config
+from moon.util import dbg, dbg_print, set_dbg
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
 try:
     from moon.util import console
@@ -14,6 +16,7 @@ except ImportError:
     register_highlights = None
 else:
     import re
+
     from rich.highlighter import ReprHighlighter
     from rich.theme import Theme
 
@@ -29,11 +32,7 @@ else:
         console.highlighter.highlights[0:0] = [
             re.compile(r'\b(?P<luna_' + name + r'>' + r'|'.join(words) + r')\b')
             for name, strs in rules
-            if (
-                words := tuple(
-                    re.escape(s) for s in sorted(strs, key=len, reverse=True)
-                )
-            )
+            if (words := tuple(re.escape(s) for s in sorted(strs, key=len, reverse=True)))
         ]
 
 
@@ -81,11 +80,7 @@ def generate(args) -> Writer | None:
     cfg_hosts = tuple(c.hosts())
 
     if register_highlights:
-        highlights = (
-            ('name', cfg_hosts),
-            ('zone', cfg.zones()),
-            ('host', (host,) if host else ()),
-        )
+        highlights = (('name', cfg_hosts), ('zone', cfg.zones()), ('host', (host,) if host else ()))
         register_highlights(highlights)
 
     if ctx:
@@ -143,11 +138,7 @@ def resolve(host: str, args) -> tuple[str, str]:
     cfg = ZoneConfig(args.zone_file, c)
 
     if register_highlights:
-        highlights = (
-            ('name', c.hosts() if c else ()),
-            ('zone', cfg.zones()),
-            ('host', (host,)),
-        )
+        highlights = (('name', c.hosts() if c else ()), ('zone', cfg.zones()), ('host', (host,)))
         register_highlights(highlights)
 
     if real_host := cfg.resolve_direct(host):

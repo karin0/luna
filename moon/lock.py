@@ -1,5 +1,6 @@
 import os
 import sys
+
 from contextlib import contextmanager
 
 from .util import dbg
@@ -9,8 +10,9 @@ if sys.platform == 'win32':
     # just polls more frequently on every platform. We use `LockFileEx` directly
     # for actual blocking behavior.
 
-    import msvcrt
     import ctypes
+    import msvcrt
+
     from ctypes import wintypes
 
     kernel32 = ctypes.windll.kernel32

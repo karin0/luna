@@ -1,4 +1,4 @@
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 # We require all passes to be idempotent and commutative; the raised `Abort`
 # is only a hint and shouldn't be relied on.

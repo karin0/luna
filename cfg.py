@@ -1,16 +1,19 @@
-import os
 import datetime
 import functools
 import importlib.util
+import os
 
-from typing import Iterable, Sequence
 from configparser import ConfigParser
 from ipaddress import AddressValueError, IPv4Address, IPv4Network
+from typing import TYPE_CHECKING
 
 from moon.intf import Interfaces
 from moon.route import Zone, ZoneSet
-from moon.util import dbg, trace
 from moon.syn import Config
+from moon.util import dbg, trace
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 if not os.environ.get('LUNA_STRICT_SUBNET'):
     try:
@@ -25,12 +28,7 @@ interfaces = None
 
 @functools.cache
 def get_timezone() -> int:
-    return int(
-        datetime.datetime.now(datetime.timezone.utc)
-        .astimezone()
-        .utcoffset()
-        .total_seconds()
-    )
+    return int(datetime.datetime.now(datetime.UTC).astimezone().utcoffset().total_seconds())
 
 
 @functools.cache
@@ -122,16 +120,14 @@ class ZoneConfig:
                 except AddressValueError:
                     continue
 
-                for zone, hosts, subnets in smart_stubs:
+                for _zone, hosts, subnets in smart_stubs:
                     for net in subnets:
                         if ip in net:
                             # Find a canonical host, now find all its aliases
                             # with the same prefix.
                             if all_hosts is None:
                                 all_hosts = iter(
-                                    h
-                                    for h in sorted(h for h in conf.hosts())
-                                    if h not in vis
+                                    h for h in sorted(h for h in conf.hosts()) if h not in vis
                                 )
 
                             aliases = [host]
@@ -139,9 +135,9 @@ class ZoneConfig:
                             while curr_host != host:
                                 curr_host = next(all_hosts, None)
 
-                            while (
-                                curr_host := next(all_hosts, None)
-                            ) and curr_host.startswith(host):
+                            while (curr_host := next(all_hosts, None)) and curr_host.startswith(
+                                host
+                            ):
                                 vis.add(curr_host)
                                 aliases.append(curr_host)
 
@@ -165,7 +161,7 @@ class ZoneConfig:
                 # via:to:cost
                 via, to, cost = parts
                 return zones[to], via, int(cost)
-            except (ValueError, KeyError):
+            except ValueError, KeyError:
                 try:
                     via, to = parts
                     try:
@@ -210,7 +206,7 @@ class ZoneConfig:
 
     def route(self, host: str | None) -> ZoneSet:
         g = self._g
-        for zone, (tz, subnets) in zip(self._zones.values(), self._conds):
+        for zone, (tz, subnets) in zip(self._zones.values(), self._conds, strict=False):
             if in_zone(tz, subnets):
                 g.set_src(zone)
 
@@ -227,9 +223,7 @@ class ZoneConfig:
                     dbg('No route to', host, must=True)
 
         specs = []
-        for name, zone in sorted(
-            self._zones.items(), key=lambda t: t[1].dist, reverse=True
-        ):
+        for name, zone in sorted(self._zones.items(), key=lambda t: t[1].dist, reverse=True):
             if (way := zone.path) is not None:
                 if must := zone.traced:
                     if (
@@ -238,13 +232,7 @@ class ZoneConfig:
                         and len(way) < len(host_way)
                         and host_way[: len(way)] == way
                     ):
-                        way = (
-                            '['
-                            + ', '.join(way)
-                            + '; '
-                            + ', '.join(host_way[len(way) :])
-                            + ']'
-                        )
+                        way = '[' + ', '.join(way) + '; ' + ', '.join(host_way[len(way) :]) + ']'
                         host_way = None
                     else:
                         way = '[' + ', '.join(way) + ']'

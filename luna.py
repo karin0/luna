@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import sys
 import time
-import argparse
-from io import StringIO
-from typing import Iterable, Sequence
+
 from contextlib import contextmanager
+from io import StringIO
+from typing import TYPE_CHECKING
 
 from moon.util import dbg
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 
 def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
     # ssh(1)
-    FLAGS = frozenset('46AaCfGgKkMNnqsTtVvXxYy')
+    flags = frozenset('46AaCfGgKkMNnqsTtVvXxYy')
 
     # Find the first positional argument (host/destination).
     it = iter(enumerate(argv))
@@ -23,7 +27,7 @@ def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
 
             a = a[1:]
             for i, c in enumerate(a):
-                if c not in FLAGS:
+                if c not in flags:
                     # All other options take an argument.
                     if i == len(a) - 1:
                         # The next argument is its value.
@@ -108,15 +112,15 @@ def main():
         elif os.name == 'nt':
             import subprocess
 
-            ret = subprocess.run(cmd).returncode
+            ret = subprocess.run(cmd).returncode  # noqa: PLW1510, S603
             sys.exit(ret)
         else:
             os.execvp(ssh, cmd)
 
-        return
+        return None
 
+    from lib import generate, preview
     from moon.lock import wait_lock
-    from lib import preview, generate
 
     a.host = a.host_or_args[0] if a.host_or_args else None
     a.state = a.last_state = None
@@ -127,7 +131,7 @@ def main():
     if not file or a.force > 1:
         if r := generate(a):
             r.write(open(file, 'w', encoding='utf-8') if file else sys.stdout)
-        return
+        return None
 
     with wait_lock(file + '.lock') as waited:
         if waited:
@@ -159,9 +163,7 @@ def main():
                     dbg(f'{base}: updated {dt * 1000:.3f} ms ago, skipping')
                     return preview(file, a)
 
-                dep_mtime = max(
-                    os.path.getmtime(f) for f in (a.input_file, a.zone_file)
-                )
+                dep_mtime = max(os.path.getmtime(f) for f in (a.input_file, a.zone_file))
                 if mtime >= dep_mtime:
                     a.last_state = last_state
 

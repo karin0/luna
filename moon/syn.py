@@ -1,10 +1,14 @@
-import re
-import sys
-import shlex
 import functools
-from fnmatch import fnmatch
+import re
+import shlex
+import sys
+
 from collections import defaultdict
-from typing import Iterable, Sequence, TextIO, Callable
+from fnmatch import fnmatch
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Sequence
 
 SUB_REG = r'\{\{(.+?)\}\}'
 
@@ -23,7 +27,7 @@ class Directive:
 
     @classmethod
     @functools.cache
-    def parse(cls, line: str) -> 'Directive':
+    def parse(cls, line: str) -> Directive:
         return cls(line)
 
     @property
@@ -43,9 +47,7 @@ class Directive:
 
     def __eq__(self, other) -> bool:
         return (
-            isinstance(other, Directive)
-            and self.opt == other.opt
-            and self.values == other.values
+            isinstance(other, Directive) and self.opt == other.opt and self.values == other.values
         )
 
 
@@ -54,11 +56,7 @@ blk_no = 0
 
 class Block:
     def __init__(
-        self,
-        header: str = '',
-        hosts: Sequence[str] = (),
-        ext: bool = False,
-        comment: str = '',
+        self, header: str = '', hosts: Sequence[str] = (), ext: bool = False, comment: str = ''
     ):
         global blk_no
         self.header = header
@@ -84,7 +82,7 @@ class Block:
         return hit
 
     # Source input block for the lines are tracked.
-    def trimmed(self) -> Iterable['Line']:
+    def trimmed(self) -> Iterable[Line]:
         for line in self.lines:
             if isinstance(line, Line):
                 yield line
@@ -125,6 +123,8 @@ class Block:
 
 
 class Line(str):
+    __slots__ = ('blk', 'dir')
+
     blk: Block
     dir: Directive
 
@@ -224,16 +224,14 @@ class Config:
     # Attach `name` as an alias of `host`.
     def attach(self, name: str, host: str) -> None:
         if name != host:
-            old = set(l.dir for l in self._query(name))
+            old = {l.dir for l in self._query(name)}
             lines = [l for l in self._query(host) if l.dir not in old]
             if 'hostname' not in self._query_opts:
                 lines.append(f'Hostname {host}')
             self.add_host((name,), lines, comment=f'inherits from {host}')
 
     # For the cache semantics, `hosts` should not contain wildcards.
-    def add_host(
-        self, hosts: Sequence[str], lines: Sequence[str], comment: str = ''
-    ) -> Block:
+    def add_host(self, hosts: Sequence[str], lines: Sequence[str], comment: str = '') -> Block:
         key = tuple(lines)
         if blk := self._ext_cache.get(key):
             if comment:
@@ -287,9 +285,7 @@ class Config:
 
     def query(self, host: str) -> tuple[Line, ...]:
         # Original blocks prioritized eventually.
-        return tuple(
-            sorted(self._query(host), key=lambda line: (line.blk.ext, line.blk.no))
-        )
+        return tuple(sorted(self._query(host), key=lambda line: (line.blk.ext, line.blk.no)))
 
     def hosts(self) -> Iterable[str]:
         return self._host_map.keys()
@@ -306,7 +302,7 @@ class Config:
                     continue
                 break
 
-    def select(self, hosts: Iterable[str]) -> 'Config':
+    def select(self, hosts: Iterable[str]) -> Config:
         cfg = Config(None)
         for host in hosts:
             cfg.add_host((host,), self.query(host))
