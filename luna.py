@@ -61,11 +61,17 @@ def rewrite(argv: list[str], args) -> Sequence[str]:
 
 
 @contextmanager
-def open_output(file: str | None):
+def open_output(file: str | None, *, strip_comments: bool = False):
     if file and file != '-':
         buf = StringIO()
         yield buf
         buf = buf.getvalue()
+
+        if strip_comments:
+            buf = '\n'.join(
+                line[:p].rstrip() if (p := line.find('#')) >= 0 else line
+                for line in buf.splitlines()
+            )
 
         # Only write the file at the last moment to avoid truncating it on error.
         with open(file, 'w', encoding='utf-8') as fp:
@@ -79,10 +85,10 @@ def main():
     parser.add_argument('-i', '--input-file', default='config')
     parser.add_argument('-z', '--zone-file', default='zone.ini')
     parser.add_argument('-o', '--output-file')
-    parser.add_argument('-t', '--trimmed')
     parser.add_argument('-H', '--header')
-    parser.add_argument('-f', '--force', action='count', default=0)
     parser.add_argument('-x', '--ssh-executable')
+    parser.add_argument('-f', '--force', action='count', default=0)
+    parser.add_argument('-t', '--trimmed', action='count', default=0)
     parser.add_argument('-p', '--print-cmd', action='store_true')
     parser.add_argument('host_or_args', nargs='*')
     a = parser.parse_args()
@@ -172,7 +178,7 @@ def main():
                 r.write(fp)
 
                 if a.trimmed:
-                    with open_output(file + '.stub') as fp:
+                    with open_output(file + '.stub', strip_comments=a.trimmed > 1) as fp:
                         r.write_trimmed(fp)
 
             if (state := a.state) and state != last_state:
