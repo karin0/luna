@@ -23,8 +23,6 @@ if not os.environ.get('LUNA_STRICT_SUBNET'):
     except ImportError:
         pass
 
-interfaces = None
-
 
 @functools.cache
 def get_timezone() -> int:

@@ -31,7 +31,7 @@ class Node:
         self.adj.append(Arc(to, cost, alias))
 
     @functools.cache
-    def _find(self) -> Sequence[str] | None:
+    def _find(self) -> Sequence[str]:
         if prev := self.prev:
             prev, e = prev
             r = prev._find()

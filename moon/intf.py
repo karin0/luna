@@ -19,7 +19,7 @@ def interfaces():
 
         if os.name == 'nt':
             dbg("interfaces: netifaces not found on 'nt', falling back to 'ipconfig'")
-            out = subprocess.check_output(('ipconfig'), timeout=2, text=True)
+            out = subprocess.check_output(('ipconfig',), timeout=2, text=True)
             reg = r'IPv4.+?[ \.]+?: (\d+\.\d+\.\d+\.\d+)\s*?.+?[ \.]+: (\d+\.\d+\.\d+\.\d+)'
             for m in re.finditer(reg, out):
                 yield IPv4Interface((m[1], m[2]))
