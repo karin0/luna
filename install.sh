@@ -30,7 +30,7 @@ fi
 
 if [ -n "$LUNA_SSH_DIRECT" ]; then
   dbg "direct to $arg"
-  exec cp -- sshconfig "$file"
+  exec cp -- "$input_file" "$file"
 fi
 
 if command -v python3 >/dev/null 2>&1; then
