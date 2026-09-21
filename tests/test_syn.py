@@ -1,0 +1,58 @@
+from io import StringIO
+
+import pytest
+
+from moon.syn import Config, Directive
+
+
+def opts(cfg: Config, host: str) -> list[str]:
+    return [str(line) for line in cfg.query(host)]
+
+
+# ssh_config(5): a directive is separated from its value by whitespace, or by
+# whitespace and exactly one '='.
+@pytest.mark.parametrize(
+    ('line', 'opt', 'values'),
+    [
+        ('Port 2222', 'port', ('2222',)),
+        ('Port=2222', 'port', ('2222',)),
+        ('Hostname=1.2.3.4', 'hostname', ('1.2.3.4',)),
+        ('Host=foo bar', 'host', ('foo', 'bar')),
+    ],
+)
+def test_directive_separators(line, opt, values):
+    d = Directive(line)
+    assert d.opt == opt
+    assert d.values == values
+
+
+def test_rendered_directive_carries_its_value():
+    # ssh rejects the whole file when a keyword arrives with no argument.
+    assert str(Directive('Port=2222')) == 'Port 2222'
+
+
+# ssh_config(5) PATTERNS: '?' matches exactly one character.
+@pytest.mark.parametrize(
+    ('host', 'hit'),
+    [('web1', True), ('webx', True), ('web', False), ('web12', False)],
+)
+def test_single_character_wildcard(host, hit):
+    cfg = Config(StringIO('Host web?\n  Port 2022\n'))
+    assert (opts(cfg, host) == ['Port 2022']) is hit
+
+
+def test_patterns_are_not_host_names():
+    # `Config.hosts()` feeds zone discovery, which needs names it can connect to.
+    cfg = Config(StringIO('Host web? real\n  Port 2022\n'))
+    assert tuple(cfg.hosts()) == ('real',)
+
+
+def test_a_block_is_registered_once_however_many_patterns_it_carries():
+    cfg = Config(StringIO('Host *.a *.b *.c\n  Port 22\n'))
+    assert len(cfg._wildcards) == len(set(cfg._wildcards))
+
+
+def test_negated_pattern_excludes_a_host():
+    cfg = Config(StringIO('Host * !secret\n  Port 22\n'))
+    assert opts(cfg, 'other') == ['Port 22']
+    assert opts(cfg, 'secret') == []
