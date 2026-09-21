@@ -18,8 +18,8 @@ class Directive:
         if parts := shlex.split(line, comments=True):
             opt = parts[0]
             if (p := opt.find('=')) >= 0:
-                opt = opt[:p]
-                parts = (opt, *shlex.split(opt[p + 1 :]), *parts[1:])
+                parts = (opt[:p], *shlex.split(opt[p + 1 :]), *parts[1:])
+                opt = parts[0]
         else:
             opt = ''
         self._opt = opt
@@ -178,10 +178,11 @@ class Config:
     def _push_blk(self, blk: Block, ext: bool = False) -> None:
         blks = self._ext_blks if ext else self._blks
         blks.append(blk)
+        has_wildcards = False
         for host in blk.hosts:
-            has_wildcards = False
             if host[0] != '!':
-                if '*' in host:
+                # ssh_config(5) PATTERNS: wildcards are '*' and '?'.
+                if '*' in host or '?' in host:
                     if not has_wildcards:
                         self._wildcards.append(blk)
                         has_wildcards = True

@@ -1,0 +1,79 @@
+import os
+import shutil
+import subprocess
+import sys
+
+from io import StringIO
+
+import pytest
+
+from conftest import ROOT
+
+from moon.syn import Config
+
+
+def generate(tree, host: str) -> Config:
+    argv = (
+        sys.executable,
+        str(ROOT / 'luna.py'),
+        '-z',
+        str(tree.zone_file),
+        '-i',
+        str(tree.input_file),
+        '-o',
+        '-',
+        host,
+    )
+    out = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+        env=os.environ | {'LUNA_MUTE': '1'},
+    ).stdout
+    return Config(StringIO(out))
+
+
+def opts(cfg: Config, host: str) -> list[str]:
+    return [str(line) for line in cfg.query(host)]
+
+
+def test_remote_zone_is_reached_through_its_gateway(tree):
+    assert 'ProxyJump ofgw' in opts(generate(tree, 'ofbox'), 'ofbox')
+
+
+def test_local_zone_needs_no_jump(tree):
+    assert 'proxyjump' not in {line.dir.opt for line in generate(tree, 'box1').query('box1')}
+
+
+def test_direct_alias_inherits_the_connection_options(tree):
+    # 'd.<host>' exists to bypass the jump chain, so it needs the whole set.
+    assert opts(generate(tree, 'ofbox'), 'd.ofgw') == [
+        'Hostname 192.168.1.1',
+        'Port 2222',
+    ]
+
+
+@pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
+def test_generated_config_is_accepted_by_ssh(tree, tmp_path):
+    out = tmp_path / 'config.inc'
+    argv = (
+        sys.executable,
+        str(ROOT / 'luna.py'),
+        '-z',
+        str(tree.zone_file),
+        '-i',
+        str(tree.input_file),
+        '-o',
+        str(out),
+        '-ff',
+        'ofbox',
+    )
+    subprocess.run(
+        argv, check=True, capture_output=True, timeout=30, env=os.environ | {'LUNA_MUTE': '1'}
+    )
+    # ssh exits 255 and abandons the file when a keyword arrives with no argument.
+    subprocess.run(
+        ('ssh', '-G', '-F', str(out), 'ofbox'), check=True, capture_output=True, timeout=30
+    )
