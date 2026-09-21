@@ -16,14 +16,32 @@ def opts(cfg: Config, host: str) -> list[str]:
     [
         ('Port 2222', 'port', ('2222',)),
         ('Port=2222', 'port', ('2222',)),
+        ('Port =2222', 'port', ('2222',)),
+        ('Port= 2222', 'port', ('2222',)),
+        ('Port = 2222', 'port', ('2222',)),
+        ('Port  =  2222', 'port', ('2222',)),
         ('Hostname=1.2.3.4', 'hostname', ('1.2.3.4',)),
         ('Host=foo bar', 'host', ('foo', 'bar')),
+        ('  IdentityFile ~/.ssh/id_ed25519', 'identityfile', ('~/.ssh/id_ed25519',)),
+        ('Port 2222  # trailing', 'port', ('2222',)),
+        # Only the separator is consumed; a value keeps its own '='.
+        ('SetEnv FOO=bar', 'setenv', ('FOO=bar',)),
+        ('ProxyCommand = nc %h %p', 'proxycommand', ('nc', '%h', '%p')),
+        ('Port="2222"', 'port', ('2222',)),
+        ('# Port=2222', '', ()),
+        ('', '', ()),
     ],
 )
 def test_directive_separators(line, opt, values):
     d = Directive(line)
     assert d.opt == opt
     assert d.values == values
+
+
+def test_hostname_survives_a_spaced_separator():
+    # Zone discovery matches these addresses against the configured subnets.
+    cfg = Config(StringIO('Host a\n  Hostname = 1.2.3.4\n'))
+    assert tuple(cfg.hostnames()) == (('a', '1.2.3.4'),)
 
 
 def test_rendered_directive_carries_its_value():
