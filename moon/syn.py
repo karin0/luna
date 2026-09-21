@@ -12,17 +12,15 @@ if TYPE_CHECKING:
 
 SUB_REG = r'\{\{(.+?)\}\}'
 
+# ssh_config(5): a keyword is separated from its values by whitespace, or by
+# optional whitespace around exactly one '='.
+SEP_REG = re.compile(r'^(\s*[^\s=]+)\s*=\s*')
+
 
 class Directive:
     def __init__(self, line: str):
-        if parts := shlex.split(line, comments=True):
-            opt = parts[0]
-            if (p := opt.find('=')) >= 0:
-                parts = (opt[:p], *shlex.split(opt[p + 1 :]), *parts[1:])
-                opt = parts[0]
-        else:
-            opt = ''
-        self._opt = opt
+        parts = shlex.split(SEP_REG.sub(r'\1 ', line, count=1), comments=True)
+        self._opt = parts[0] if parts else ''
         self.values = tuple(parts[1:])
 
     @classmethod
