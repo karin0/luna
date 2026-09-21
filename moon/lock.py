@@ -110,6 +110,9 @@ def wait_lock(file):
         base = os.path.basename(file)
         dbg(f'{base}: waiting for lock', must=True)
         waited = True
+        # The wait runs until the holder releases: the kernel drops the lock when
+        # that generator exits, and giving up early would connect through the
+        # config on disk, which may have been generated for a different zone.
         lock.acquire()
     else:
         waited = False
