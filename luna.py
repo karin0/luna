@@ -43,8 +43,8 @@ def rewrite(argv: list[str], args) -> Sequence[str]:
 
     idx, host = t
     if (p := host.find('@')) >= 0:
-        host = host[p + 1 :]
         prefix = host[: p + 1]
+        host = host[p + 1 :]
     else:
         prefix = ''
 
