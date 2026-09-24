@@ -4,7 +4,7 @@ import time
 
 from configparser import ConfigParser
 from ipaddress import AddressValueError, IPv4Address, IPv4Network
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from moon.intf import Interfaces
 from moon.route import Zone, ZoneSet
@@ -40,32 +40,35 @@ def get_interfaces() -> Interfaces:
     return interfaces
 
 
-def in_zone(tz: float | None, subnets: Sequence[IPv4Network]) -> bool:
-    # AND for timezone and subnet, so no constraint means always hits.
-    if tz is not None and get_timezone() != tz * 3600:
-        return False
+class Section(NamedTuple):
+    zone: Zone
+    timezone: float | None
+    subnets: tuple[IPv4Network, ...]
 
-    if subnets:
-        interfaces = get_interfaces()
+    def applies(self) -> bool:
+        # AND for timezone and subnet, so no constraint means always hits.
+        if self.timezone is not None and get_timezone() != self.timezone * 3600:
+            return False
 
-        # OR for all subnets.
-        return any(interfaces.check_subnet(s) for s in subnets)
+        if self.subnets:
+            interfaces = get_interfaces()
 
-    return True
+            # OR for all subnets.
+            return any(interfaces.check_subnet(s) for s in self.subnets)
+
+        return True
 
 
 class ZoneConfig:
     def __init__(self, file: str, conf: Config | None = None) -> None:
-        self._cfg = cfg = ConfigParser()
+        cfg = ConfigParser()
         if not cfg.read(file):
             raise FileNotFoundError(file)
 
         self._g = g = ZoneSet()
 
-        self._zones: dict[str, Zone] = {}
-        self._conds: list[tuple[float | None, tuple[IPv4Network, ...]]] = []
-
-        zones = self._zones
+        self._sections: dict[str, Section] = {}
+        sections = self._sections
         zone_stubs: list[Stub] = []
         smart_stubs: list[Stub] = []
         vis: set[str] = set()
@@ -132,8 +135,8 @@ class ZoneConfig:
                     break
 
         for sect, hosts, subnets in zone_stubs:
-            zones[sect] = zone = g.add(hosts)
-            self._conds.append((cfg.getfloat(sect, 'timezone', fallback=None), subnets))
+            tz = cfg.getfloat(sect, 'timezone', fallback=None)
+            sections[sect] = Section(g.add(hosts), tz, subnets)
 
         def parse_arc(arc: str) -> tuple[Zone | None, str, int | None]:
             parts = arc.split(':')
@@ -141,7 +144,7 @@ class ZoneConfig:
             try:
                 # via:to:cost
                 via, to, cost = parts
-                return zones[to], via, int(cost)
+                return sections[to].zone, via, int(cost)
             except ValueError, KeyError:
                 try:
                     via, to = parts
@@ -151,7 +154,7 @@ class ZoneConfig:
                         spec = via
                     except ValueError:
                         # via:to
-                        return zones[to], via, None
+                        return sections[to].zone, via, None
                 except ValueError:
                     # via|to
                     spec = arc
@@ -159,7 +162,7 @@ class ZoneConfig:
 
                 # Direct link to a zone is preferred.
                 try:
-                    to = zones[spec]
+                    to = sections[spec].zone
                     via = ''
                 except KeyError:
                     # Target zone is resolved from the `via`.
@@ -168,28 +171,28 @@ class ZoneConfig:
 
             return to, via, cost
 
-        for sect, zone in zones.items():
+        for sect, section in sections.items():
             arcs = cfg.get(sect, 'arc', fallback='').split()
             for arc in arcs:
                 to, via, cost = parse_arc(arc)
                 if cost is None:
-                    g.arc(zone, to, via)
+                    g.arc(section.zone, to, via)
                 else:
-                    g.arc(zone, to, via, cost)
+                    g.arc(section.zone, to, via, cost)
 
     def get_state(self) -> str:
         r: list[str] = []
-        if any(tz is not None for tz, _ in self._conds):
+        if any(s.timezone is not None for s in self._sections.values()):
             r.append('tz:' + str(get_timezone()))
-        if any(subnets for _, subnets in self._conds):
+        if any(s.subnets for s in self._sections.values()):
             r.append('if:' + str(get_interfaces()))
         return '|'.join(r)
 
     def route(self, host: str | None) -> ZoneSet:
         g = self._g
-        for zone, (tz, subnets) in zip(self._zones.values(), self._conds, strict=False):
-            if in_zone(tz, subnets):
-                g.set_src(zone)
+        for s in self._sections.values():
+            if s.applies():
+                g.set_src(s.zone)
 
         g.route()
 
@@ -206,7 +209,12 @@ class ZoneConfig:
                     traced = (host, host_way)
 
         specs: list[tuple[str, str, int, bool]] = []
-        for name, zone in sorted(self._zones.items(), key=lambda t: t[1].dist, reverse=True):
+        zones = sorted(
+            ((name, s.zone) for name, s in self._sections.items()),
+            key=lambda t: t[1].dist,
+            reverse=True,
+        )
+        for name, zone in zones:
             if (way := zone.path) is not None:
                 label = '[' + ', '.join(way) + ']'
                 if (must := zone.traced) and traced:
@@ -236,4 +244,4 @@ class ZoneConfig:
             return host
 
     def zones(self) -> Iterable[str]:
-        return self._zones.keys()
+        return self._sections.keys()
