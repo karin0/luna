@@ -30,6 +30,8 @@ fi
 
 if [ -n "$LUNA_SSH_DIRECT" ]; then
   dbg "direct to $arg"
+  # The copy carries no routes, so the next routed run has to regenerate.
+  rm -f -- "$file.state"
   exec cp -- "$input_file" "$file"
 fi
 
