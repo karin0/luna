@@ -115,7 +115,7 @@ running it.
 
 ## VS Code Remote - SSH
 
-Every regeneration also writes `~/.ssh/config.inc.stub`, a flat config with one `Host` block per
+Every regeneration also writes `~/.ssh/config.inc.flat`, a flat config with one `Host` block per
 host of `sshconfig`, holding the options that apply to it and its route. It has no inline comments
 and no `d.` hosts, so Remote - SSH can read it. Point the `remote.SSH.configFile` setting at it.
 

@@ -68,7 +68,7 @@ def do_sub(cmd):
 
 class Writer(NamedTuple):
     write: Callable[[TextIO], None]
-    write_stub: Callable[[TextIO], None]
+    write_flat: Callable[[TextIO], None]
 
 
 def generate(args) -> Writer | None:
@@ -121,13 +121,13 @@ def generate(args) -> Writer | None:
         if args.header:
             print(args.header, file=file)
 
-    # VS Code Remote - SSH fails on inline comments, so the stub omits
+    # VS Code Remote - SSH fails on inline comments, so the flat config omits
     # annotations and the generated 'd.' hosts.
-    def write_stub(file: TextIO):
+    def write_flat(file: TextIO):
         aliases = frozenset(g.aliases())
         write(file, c.select(h for h in cfg_hosts if h not in aliases), annotate=False)
 
-    return Writer(write, write_stub)
+    return Writer(write, write_flat)
 
 
 def resolve(host: str, args) -> tuple[str, str]:

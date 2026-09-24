@@ -75,8 +75,8 @@ def write_outputs(r: Writer, file: str):
     with open_output(file) as fp:
         r.write(fp)
 
-    with open_output(file + '.stub') as fp:
-        r.write_stub(fp)
+    with open_output(file + '.flat') as fp:
+        r.write_flat(fp)
 
 
 def main():

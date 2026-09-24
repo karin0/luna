@@ -115,14 +115,14 @@ def generate_files(tree, tmp_path, force: str):
     subprocess.run(
         argv, check=True, capture_output=True, timeout=30, env=os.environ | {'LUNA_MUTE': '1'}
     )
-    return out, out.with_name(out.name + '.stub')
+    return out, out.with_name(out.name + '.flat')
 
 
-# '-f' goes through the lock and '-ff' skips it; both write the stub.
+# '-f' goes through the lock and '-ff' skips it; both write the flat config.
 @pytest.mark.parametrize('force', ['-f', '-ff'])
-def test_stub_lists_the_input_hosts_with_their_routes(tree, tmp_path, force):
-    _, stub = generate_files(tree, tmp_path, force)
-    text = stub.read_text(encoding='utf-8')
+def test_flat_config_lists_the_input_hosts_with_their_routes(tree, tmp_path, force):
+    _, flat = generate_files(tree, tmp_path, force)
+    text = flat.read_text(encoding='utf-8')
     cfg = Config(StringIO(text))
 
     # VS Code Remote - SSH breaks on inline comments; full-line ones are fine.
@@ -134,10 +134,10 @@ def test_stub_lists_the_input_hosts_with_their_routes(tree, tmp_path, force):
 
 
 @pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
-def test_stub_is_accepted_by_ssh(tree, tmp_path):
-    _, stub = generate_files(tree, tmp_path, '-f')
+def test_flat_config_is_accepted_by_ssh(tree, tmp_path):
+    _, flat = generate_files(tree, tmp_path, '-f')
     out = subprocess.run(
-        ('ssh', '-G', '-F', str(stub), 'ofbox'),
+        ('ssh', '-G', '-F', str(flat), 'ofbox'),
         check=True,
         capture_output=True,
         text=True,
