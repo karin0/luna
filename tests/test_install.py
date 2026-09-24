@@ -65,3 +65,28 @@ def test_routed_run_after_a_direct_one_regenerates(tmp_path: Path):
     # Within the two-second window of the copy.
     run_install(tmp_path, {'LUNA_MUTE': '1'})
     assert 'ProxyJump ofgw' in out.read_text(encoding='utf-8')
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+def test_scripts_are_quiet_outside_a_git_repository(tmp_path: Path):
+    # The quick start puts the config in ~/.ssh, which is usually no repository.
+    (tmp_path / 'zone.ini').write_text(LOCAL_ZONE_FILE, encoding='utf-8')
+    (tmp_path / 'sshconfig').write_text(SSH_CONFIG, encoding='utf-8')
+    env = {'GIT_CEILING_DIRECTORIES': str(tmp_path.parent)}
+    assert 'fatal' not in run_install(tmp_path, env).stderr
+
+    wrapper = subprocess.run(
+        ('bash', str(ROOT / 'ssh.sh'), 'ofbox'),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=os.environ
+        | env
+        | {
+            'LUNA_SSH': 'true',
+            'LUNA_ENTRY': str(ROOT / 'luna.py'),
+            'LUNA_ZONE': str(tmp_path / 'zone.ini'),
+        },
+    )
+    assert 'fatal' not in wrapper.stderr
