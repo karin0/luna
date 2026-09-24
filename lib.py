@@ -3,7 +3,6 @@ import itertools
 from typing import TYPE_CHECKING, NamedTuple, TextIO
 
 from cfg import ZoneConfig
-from moon.env import Environment
 from moon.syn import Config
 from moon.util import dbg, dbg_print, set_dbg
 
@@ -56,16 +55,6 @@ def flush_dbg(file: TextIO):
         print(file=file)
 
 
-ctx = Environment()
-
-
-def do_sub(cmd):
-    if cmd in ctx:
-        cmd = ctx[cmd]
-
-    return cmd.strip()
-
-
 class Writer(NamedTuple):
     write: Callable[[TextIO], None]
     write_flat: Callable[[TextIO], None]
@@ -82,13 +71,6 @@ def generate(args) -> Writer | None:
     if register_highlights:
         highlights = (('name', cfg_hosts), ('zone', cfg.zones()), ('host', (host,) if host else ()))
         register_highlights(highlights)
-
-    if ctx:
-        sub_res = c.sub(do_sub)
-
-        for k, v in sub_res.items():
-            if v:
-                dbg(k + '\t| ' + v)
 
     if host and (real_host := cfg.resolve_direct(host)):
         dbg('Direct for', real_host, must=True)

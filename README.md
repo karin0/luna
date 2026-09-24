@@ -168,9 +168,6 @@ Reaching a host inside a zone adds a cost of 10.
 the SSH config whose `Hostname` is an IPv4 address inside a zone's subnet joins that zone, and the
 hosts whose names start with its name become its aliases.
 
-`hook` names a Python file inside the working directory, which luna imports while loading the
-zones.
-
 ## Generator mode details
 
 `install.sh` runs luna in `~/.ssh` and skips regeneration when `config.inc` was written in the
