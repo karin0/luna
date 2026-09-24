@@ -14,12 +14,21 @@ if TYPE_CHECKING:
 # optional whitespace around exactly one '='.
 SEP_REG = re.compile(r'^(\s*[^\s=]+)\s*=\s*')
 
+# ssh passes the rest of these lines to the shell verbatim, so they keep their text.
+COMMAND_OPTS = frozenset(('knownhostscommand', 'localcommand', 'proxycommand', 'remotecommand'))
+
 
 class Directive:
     def __init__(self, line: str):
-        parts = shlex.split(SEP_REG.sub(r'\1 ', line, count=1), comments=True)
-        self._opt = parts[0] if parts else ''
-        self.values = tuple(parts[1:])
+        spaced = SEP_REG.sub(r'\1 ', line, count=1)
+        match spaced.split(maxsplit=1):
+            case [keyword, *rest] if keyword.lower() in COMMAND_OPTS:
+                self._opt = keyword
+                self.values = tuple(r.rstrip() for r in rest)
+            case _:
+                parts = shlex.split(spaced, comments=True)
+                self._opt = parts[0] if parts else ''
+                self.values = tuple(parts[1:])
 
     @classmethod
     @functools.cache
@@ -33,6 +42,8 @@ class Directive:
     def __str__(self) -> str:
         # Remove comments, leading and trailing spaces, and unnecessary
         # quotes.
+        if self.opt in COMMAND_OPTS:
+            return ' '.join((self._opt, *self.values))
         return self._opt + ' ' + shlex.join(self.values)
 
     def __bool__(self) -> bool:
