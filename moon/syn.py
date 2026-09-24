@@ -303,8 +303,15 @@ class Config:
                     continue
                 break
 
-    def select(self, hosts: Iterable[str]) -> Config:
+    # `unlisted` hosts get `Match originalhost` blocks, which ssh matches like
+    # `Host` but which are no connection targets for clients that list them.
+    def select(self, hosts: Iterable[str], unlisted: Iterable[str] = ()) -> Config:
         cfg = Config(None)
         for host in hosts:
             cfg.add_host((host,), self.query(host))
+        for host in unlisted:
+            blk = Block(f'Match originalhost {host}', ext=True)
+            for line in self.query(host):
+                blk.push(line)
+            cfg._push_blk(blk, ext=True)
         return cfg

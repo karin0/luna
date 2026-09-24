@@ -121,11 +121,14 @@ def generate(args) -> Writer | None:
         if args.header:
             print(args.header, file=file)
 
-    # VS Code Remote - SSH fails on inline comments, so the flat config omits
-    # annotations and the generated 'd.' hosts.
+    # VS Code Remote - SSH fails on inline comments and lists every `Host`, so the
+    # flat config omits annotations and the generated 'd.' hosts, and keeps zone
+    # aliases, which routes still jump through, out of the list.
     def write_flat(file: TextIO):
         aliases = frozenset(g.aliases())
-        write(file, c.select(h for h in cfg_hosts if h not in aliases), annotate=False)
+        listed = (h for h in cfg_hosts if h not in aliases)
+        unlisted = (h for h in cfg_hosts if h in aliases)
+        write(file, c.select(listed, unlisted), annotate=False)
 
     return Writer(write, write_flat)
 

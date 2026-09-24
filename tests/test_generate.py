@@ -7,7 +7,7 @@ from io import StringIO
 
 import pytest
 
-from conftest import ROOT
+from conftest import ROOT, SSH_CONFIG, Tree
 
 from moon.syn import Config
 
@@ -144,3 +144,43 @@ def test_flat_config_is_accepted_by_ssh(tree, tmp_path):
         timeout=30,
     ).stdout
     assert 'proxyjump ofgw' in out.splitlines()
+
+
+ALIAS_ZONE_FILE = '''\
+[home]
+host = gw1 box1
+arc = ofgw-pub:office
+
+[office]
+host = ofgw:ofgw-pub ofbox
+subnet = 203.0.113.0/24
+'''
+
+ALIAS_HOST = '''
+Host ofgw-pub
+  Hostname 198.51.100.1
+  Port 2222
+'''
+
+
+@pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
+def test_flat_config_resolves_an_unlisted_jump_alias(tmp_path):
+    tree = Tree(tmp_path / 'zone.ini', tmp_path / 'sshconfig')
+    tree.zone_file.write_text(ALIAS_ZONE_FILE, encoding='utf-8')
+    tree.input_file.write_text(SSH_CONFIG + ALIAS_HOST, encoding='utf-8')
+    _, flat = generate_files(tree, tmp_path, '-f')
+
+    # The alias is reached by clicking its canonical host, so only that is listed.
+    assert 'ofgw-pub' not in Config(StringIO(flat.read_text(encoding='utf-8'))).hosts()
+
+    def resolve(host: str) -> list[str]:
+        return subprocess.run(
+            ('ssh', '-G', '-F', str(flat), host),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+
+    assert 'proxyjump ofgw-pub' in resolve('ofbox')
+    assert {'hostname 198.51.100.1', 'port 2222'} <= set(resolve('ofgw-pub'))
