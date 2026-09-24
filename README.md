@@ -113,6 +113,17 @@ running it.
 ~/.ssh/luna/luna.py -p -z ~/.ssh/zone.ini -- ofbox
 ```
 
+## VS Code Remote - SSH
+
+Every regeneration also writes `~/.ssh/config.inc.stub`, a flat config with one `Host` block per
+host of `sshconfig`, holding the options that apply to it and its route. It has no inline comments
+and no `d.` hosts, so Remote - SSH can read it. Point the `remote.SSH.configFile` setting at it.
+
+Remote - SSH connects with `ssh -F` on that file, which leaves `~/.ssh/config` and its `Match exec`
+line unread, so its connections do not regenerate anything. They use the routes from the last `ssh`
+run elsewhere. After moving to another network, run any `ssh` command once before connecting from
+VS Code.
+
 ## Skipping luna
 
 For every host `name` in `zone.ini`, `ssh d.name` connects to it directly without any jumps, in

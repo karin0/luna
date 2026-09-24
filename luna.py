@@ -13,6 +13,8 @@ from moon.util import dbg
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
+    from lib import Writer
+
 
 def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
     # ssh(1)
@@ -61,23 +63,20 @@ def rewrite(argv: list[str], args) -> Sequence[str]:
 
 
 @contextmanager
-def open_output(file: str | None, *, strip_comments: bool = False):
-    if file and file != '-':
-        buf = StringIO()
-        yield buf
-        buf = buf.getvalue()
+def open_output(file: str):
+    buf = StringIO()
+    yield buf
+    # Only write the file at the last moment to avoid truncating it on error.
+    with open(file, 'w', encoding='utf-8') as fp:
+        fp.write(buf.getvalue())
 
-        if strip_comments:
-            buf = '\n'.join(
-                line[:p].rstrip() if (p := line.find('#')) >= 0 else line
-                for line in buf.splitlines()
-            )
 
-        # Only write the file at the last moment to avoid truncating it on error.
-        with open(file, 'w', encoding='utf-8') as fp:
-            fp.write(buf)
-    else:
-        yield sys.stdout
+def write_outputs(r: Writer, file: str):
+    with open_output(file) as fp:
+        r.write(fp)
+
+    with open_output(file + '.stub') as fp:
+        r.write_stub(fp)
 
 
 def main():
@@ -88,7 +87,6 @@ def main():
     parser.add_argument('-H', '--header')
     parser.add_argument('-x', '--ssh-executable')
     parser.add_argument('-f', '--force', action='count', default=0)
-    parser.add_argument('-t', '--trimmed', action='count', default=0)
     parser.add_argument('-p', '--print-cmd', action='store_true')
     parser.add_argument('host_or_args', nargs='*')
     a = parser.parse_args()
@@ -139,7 +137,10 @@ def main():
 
     if not file or a.force > 1:
         if r := generate(a):
-            r.write(open(file, 'w', encoding='utf-8') if file else sys.stdout)
+            if file:
+                write_outputs(r, file)
+            else:
+                r.write(sys.stdout)
         return None
 
     with wait_lock(file + '.lock') as waited:
@@ -177,12 +178,7 @@ def main():
                     a.last_state = last_state
 
         if r := generate(a):
-            with open_output(file) as fp:
-                r.write(fp)
-
-                if a.trimmed:
-                    with open_output(file + '.stub', strip_comments=a.trimmed > 1) as fp:
-                        r.write_trimmed(fp)
+            write_outputs(r, file)
 
             if (state := a.state) and state != last_state:
                 with open(state_file, 'w', encoding='utf-8') as fp:

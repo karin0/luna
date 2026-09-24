@@ -68,7 +68,7 @@ def do_sub(cmd):
 
 class Writer(NamedTuple):
     write: Callable[[TextIO], None]
-    write_trimmed: Callable[[TextIO], None]
+    write_stub: Callable[[TextIO], None]
 
 
 def generate(args) -> Writer | None:
@@ -109,23 +109,25 @@ def generate(args) -> Writer | None:
     if host := args.host:
         dbg_query(c, host)
 
-    def write(file: TextIO, cfg: Config = c):
+    def write(file: TextIO, cfg: Config = c, *, annotate: bool = True):
         if args.header:
             print(args.header, file=file)
 
-        if not file.isatty():
+        if annotate and not file.isatty():
             flush_dbg(file)
 
-        cfg.print(file, separator=args.header)
+        cfg.print(file, separator=args.header, annotate=annotate)
 
         if args.header:
             print(args.header, file=file)
 
-    def write_trimmed(file: TextIO, cfg: Config = c):
+    # VS Code Remote - SSH fails on inline comments, so the stub omits
+    # annotations and the generated 'd.' hosts.
+    def write_stub(file: TextIO):
         aliases = frozenset(g.aliases())
-        write(file, cfg.select(h for h in cfg_hosts if h not in aliases))
+        write(file, c.select(h for h in cfg_hosts if h not in aliases), annotate=False)
 
-    return Writer(write, write_trimmed)
+    return Writer(write, write_stub)
 
 
 def resolve(host: str, args) -> tuple[str, str]:
