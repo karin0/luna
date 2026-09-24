@@ -82,7 +82,7 @@ def open_output(file: str | None, *, strip_comments: bool = False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input-file', default='config')
+    parser.add_argument('-i', '--input-file')
     parser.add_argument('-z', '--zone-file', default='zone.ini')
     parser.add_argument('-o', '--output-file')
     parser.add_argument('-H', '--header')
@@ -124,6 +124,9 @@ def main():
             os.execvp(ssh, cmd)
 
         return None
+
+    if not a.input_file:
+        parser.error('generator mode requires -i/--input-file')
 
     from lib import generate, preview
     from moon.lock import wait_lock

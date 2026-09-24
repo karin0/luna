@@ -6,7 +6,6 @@ set -eo pipefail
   "${LUNA_ENTRY:=~/.ssh/luna/luna.py}" \
   "${LUNA_ZONE:=~/.ssh/zone.ini}"
 
-# `-i` is passed even if LUNA_CONFIG is empty to disable host discovery.
 luna=("$LUNA_ENTRY" -x "$LUNA_SSH" -z "$LUNA_ZONE" -i "$LUNA_CONFIG")
 
 if [ -v LUNA_MUTE ]; then
