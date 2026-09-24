@@ -197,12 +197,8 @@ class ZoneSet:
                     conf.add_host((target,), (f'ProxyJump {last_jump}',), comment=way)
 
     def contains(self, zone: Zone, name: str) -> bool:
-        name = self._canonical.get(name, name)
-        try:
-            u = self._nodes[name]
-        except KeyError:
-            return False
-        return u.zone is zone
+        u = self._canonical.get(name) or self._nodes.get(name)
+        return u is not None and u.zone is zone
 
     def __contains__(self, name: str) -> bool:
         return name in self._nodes
