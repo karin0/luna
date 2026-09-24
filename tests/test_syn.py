@@ -76,3 +76,16 @@ def test_negated_pattern_excludes_a_host():
     cfg = Config(StringIO('Host * !secret\n  Port 22\n'))
     assert opts(cfg, 'other') == ['Port 22']
     assert opts(cfg, 'secret') == []
+
+
+def test_attached_alias_connects_to_a_host_without_hostname():
+    # ssh would resolve the alias itself, so it has to name its source host.
+    cfg = Config(StringIO('Host a\n  Port 2022\n'))
+    cfg.attach('d.a', 'a')
+    assert opts(cfg, 'd.a') == ['Port 2022', 'Hostname a']
+
+
+def test_attached_alias_keeps_the_hostname_of_its_source():
+    cfg = Config(StringIO('Host a\n  Hostname 192.0.2.1\n'))
+    cfg.attach('d.a', 'a')
+    assert opts(cfg, 'd.a') == ['Hostname 192.0.2.1']
