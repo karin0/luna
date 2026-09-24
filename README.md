@@ -56,7 +56,8 @@ the SSH config (`git`, `rsync`, `scp`, editors with remote extensions) takes the
 further setup. It reads only the `Host` blocks of your config, so choose it when your config is
 made of `Host` blocks.
 
-Wrapper mode puts a script named `ssh` in front of the real one and rewrites its command line. It
+Wrapper mode puts a script named `ssh` in front of the real one and rewrites its command line,
+unless the command line already names a jump with `-J`, `-o ProxyJump` or `-o ProxyCommand`. It
 leaves the config files alone, so it suits configs that depend on `Match` or `Include`. Programs
 only benefit when they find the wrapper on `PATH`.
 

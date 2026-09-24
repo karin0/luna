@@ -44,6 +44,33 @@ def test_rewrite(tree: Tree, dest: str, rewritten: tuple[str, ...]):
     assert tuple(rewrite([dest, 'uptime'], args)) == (*rewritten, 'uptime')
 
 
+@pytest.mark.parametrize(
+    'argv',
+    [
+        ['-J', 'other', 'ofbox'],
+        ['-vJother', 'ofbox'],
+        ['-o', 'ProxyJump=other', 'ofbox'],
+        ['-oProxyCommand nc %h %p', 'ofbox'],
+        ['-o', 'proxyjump none', 'ofbox'],
+    ],
+)
+def test_rewrite_keeps_a_jump_given_on_the_command_line(tree: Tree, argv: list[str]):
+    # ssh rejects a second -J, and the first ProxyJump would override the user's.
+    args = Args(input_file=str(tree.input_file), zone_file=str(tree.zone_file))
+    assert tuple(rewrite(list(argv), args)) == tuple(argv)
+
+
+def test_rewrite_routes_past_other_options(tree: Tree):
+    args = Args(input_file=str(tree.input_file), zone_file=str(tree.zone_file))
+    assert tuple(rewrite(['-o', 'User=me', 'ofbox'], args)) == (
+        '-J',
+        'ofgw',
+        '-o',
+        'User=me',
+        'ofbox',
+    )
+
+
 def test_print_cmd_routes_without_an_input_file(tree: Tree):
     # The input file only feeds host discovery, so leaving it out still routes.
     argv = (sys.executable, str(ROOT / 'luna.py'), '-p', '-z', str(tree.zone_file), '--', 'ofbox')
