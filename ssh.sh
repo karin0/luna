@@ -19,7 +19,7 @@ else
     arg="\e[1;31m$arg\e[0m"
   fi
 
-  if rev="$(git -C "$(dirname -- "$LUNA_ZONE")" rev-parse --short HEAD)"; then
+  if rev="$(git -C "$(dirname -- "$LUNA_ZONE")" rev-parse --short HEAD 2>/dev/null)"; then
     at=" @ $rev"
   fi
 fi

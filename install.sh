@@ -41,7 +41,7 @@ else
   py=python
 fi
 
-if rev="$(git rev-parse --short HEAD)"; then
+if rev="$(git rev-parse --short HEAD 2>/dev/null)"; then
   at=" @ $rev"
 fi
 
