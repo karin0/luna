@@ -1,6 +1,6 @@
-import datetime
 import functools
 import os
+import time
 
 from configparser import ConfigParser
 from ipaddress import AddressValueError, IPv4Address, IPv4Network
@@ -12,20 +12,23 @@ from moon.syn import Config
 from moon.util import dbg, trace
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
 if not os.environ.get('LUNA_STRICT_SUBNET'):
     try:
         # Use faster gateway lookup by default when `netifaces` is available.
         # This is more permissive, and may not work in Termux.
-        from moon.intf import Gateways as Interfaces
+        from moon.gateways import Gateways as Interfaces
     except ImportError:
         pass
+
+# A zone section before its hosts become nodes: name, hosts with their aliases, and subnets.
+type Stub = tuple[str, list[list[str]], tuple[IPv4Network, ...]]
 
 
 @functools.cache
 def get_timezone() -> int:
-    return int(datetime.datetime.now(datetime.UTC).astimezone().utcoffset().total_seconds())
+    return time.localtime().tm_gmtoff
 
 
 @functools.cache
@@ -52,7 +55,7 @@ def in_zone(tz: float | None, subnets: Sequence[IPv4Network]) -> bool:
 
 
 class ZoneConfig:
-    def __init__(self, file, conf: Config | None = None) -> None:
+    def __init__(self, file: str, conf: Config | None = None) -> None:
         self._cfg = cfg = ConfigParser()
         if not cfg.read(file):
             raise FileNotFoundError(file)
@@ -60,14 +63,12 @@ class ZoneConfig:
         self._g = g = ZoneSet()
 
         self._zones: dict[str, Zone] = {}
-        self._conds: list[tuple[float, tuple[IPv4Network, ...]]] = []
+        self._conds: list[tuple[float | None, tuple[IPv4Network, ...]]] = []
 
         zones = self._zones
-        zone_stubs = []
-        vis = set()
-
-        if conf:
-            smart_stubs = []
+        zone_stubs: list[Stub] = []
+        smart_stubs: list[Stub] = []
+        vis: set[str] = set()
 
         for sect in cfg.sections():
             hosts = cfg.get(sect, 'host', fallback='').split()
@@ -92,7 +93,8 @@ class ZoneConfig:
 
         if conf and smart_stubs:
             # Find SSH hosts in the given subnets smartly.
-            all_hosts = curr_host = None
+            all_hosts: Iterator[str] | None = None
+            curr_host: str | None = None
             for host, hostname in sorted(conf.hostnames()):
                 if host in vis:
                     continue
@@ -176,7 +178,7 @@ class ZoneConfig:
                     g.arc(zone, to, via, cost)
 
     def get_state(self) -> str:
-        r = []
+        r: list[str] = []
         if any(tz is not None for tz, _ in self._conds):
             r.append('tz:' + str(get_timezone()))
         if any(subnets for _, subnets in self._conds):
@@ -191,7 +193,7 @@ class ZoneConfig:
 
         g.route()
 
-        host_way = None
+        traced: tuple[str, Sequence[str]] | None = None
         if host:
             try:
                 host_way = g.trace(host)
@@ -200,26 +202,25 @@ class ZoneConfig:
             else:
                 if host_way is None:
                     dbg('No route to', host, must=True)
+                else:
+                    traced = (host, host_way)
 
-        specs = []
+        specs: list[tuple[str, str, int, bool]] = []
         for name, zone in sorted(self._zones.items(), key=lambda t: t[1].dist, reverse=True):
             if (way := zone.path) is not None:
-                if must := zone.traced:
+                label = '[' + ', '.join(way) + ']'
+                if (must := zone.traced) and traced:
+                    host, host_way = traced
                     if (
-                        host_way is not None
-                        and not g.contains(zone, host)
+                        not g.contains(zone, host)
                         and len(way) < len(host_way)
                         and host_way[: len(way)] == way
                     ):
-                        way = '[' + ', '.join(way) + '; ' + ', '.join(host_way[len(way) :]) + ']'
-                        host_way = None
-                    else:
-                        way = '[' + ', '.join(way) + ']'
-                else:
-                    way = '[' + ', '.join(way) + ']'
+                        label = f'[{', '.join(way)}; {', '.join(host_way[len(way) :])}]'
+                        traced = None
 
                 z = f'{{{name}: {', '.join(h.name for h in zone.hosts)}}}'
-                specs.append((way, z, zone.dist, must))
+                specs.append((label, z, zone.dist, must))
 
         for way, z, dist, must in reversed(specs):
             dbg(way, '->', z, f'({dist})', must=must)

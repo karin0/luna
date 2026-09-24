@@ -1,6 +1,7 @@
 import functools
 import heapq
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
 from .syn import Config
@@ -71,12 +72,10 @@ class Zone:
         return self.root.traced
 
 
-class Dijkstra(NamedTuple):
+@dataclass(order=True, frozen=True, slots=True)
+class Dijkstra:
     dist: int
-    u: Node
-
-    def __lt__(self, v: Dijkstra) -> bool:
-        return self.dist < v.dist
+    u: Node = field(compare=False)
 
 
 class ZoneSet:
@@ -85,7 +84,7 @@ class ZoneSet:
         self._canonical: dict[str, Node] = {}
         self._q: list[Dijkstra] = []
 
-    def _add(self, name: str, zone: Zone) -> Node:
+    def _add(self, name: str, zone: Zone | None) -> Node:
         u = Node(name, zone)
         if name:
             assert name not in self._nodes
@@ -141,9 +140,10 @@ class ZoneSet:
 
             frm.root.arc(u, cost)
         else:
+            assert to, 'an arc without a via names its target zone'
             frm.root.arc(to.root, cost)
 
-    def route(self):
+    def route(self) -> None:
         q = self._q
         while q:
             u = heapq.heappop(q).u
@@ -178,7 +178,7 @@ class ZoneSet:
 
     # In generator mode, we inject ProxyJump options to every hop and "attach"
     # all connecting options of the final hop to the destination host.
-    def inject(self, conf: Config):
+    def inject(self, conf: Config) -> None:
         for u in self._nodes.values():
             if (target := u.name) and (way := u.find()):
                 final_hop = way[-1]

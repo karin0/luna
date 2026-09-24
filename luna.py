@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from moon.util import dbg
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Generator, Iterable, Sequence
 
     from lib import Writer
 
@@ -39,7 +39,23 @@ def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
             return t if a else None
 
 
-def rewrite(argv: list[str], args) -> Sequence[str]:
+class Args(argparse.Namespace):
+    input_file: str | None
+    zone_file: str
+    output_file: str | None
+    header: str | None
+    ssh_executable: str | None
+    force: int
+    print_cmd: bool
+    host_or_args: list[str]
+
+    # Set by `main` before generating or rewriting.
+    host: str | None = None
+    state: str | None = None
+    last_state: str | None = None
+
+
+def rewrite(argv: list[str], args: Args) -> Sequence[str]:
     if not (t := find_host(argv)):
         return argv
 
@@ -63,7 +79,7 @@ def rewrite(argv: list[str], args) -> Sequence[str]:
 
 
 @contextmanager
-def open_output(file: str):
+def open_output(file: str) -> Generator[StringIO]:
     buf = StringIO()
     yield buf
     # Only write the file at the last moment to avoid truncating it on error.
@@ -71,7 +87,7 @@ def open_output(file: str):
         fp.write(buf.getvalue())
 
 
-def write_outputs(r: Writer, file: str):
+def write_outputs(r: Writer, file: str) -> None:
     with open_output(file) as fp:
         r.write(fp)
 
@@ -79,7 +95,7 @@ def write_outputs(r: Writer, file: str):
         r.write_flat(fp)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input-file')
     parser.add_argument('-z', '--zone-file', default='zone.ini')
@@ -89,7 +105,7 @@ def main():
     parser.add_argument('-f', '--force', action='count', default=0)
     parser.add_argument('-p', '--print-cmd', action='store_true')
     parser.add_argument('host_or_args', nargs='*')
-    a = parser.parse_args()
+    a = parser.parse_args(namespace=Args())
 
     if (ssh := a.ssh_executable) or a.print_cmd:
         # We intercept and modify the `argv` in this wrapper mode, instead of
@@ -119,24 +135,23 @@ def main():
             ret = subprocess.run(cmd).returncode  # noqa: PLW1510, S603
             sys.exit(ret)
         else:
-            os.execvp(ssh, cmd)
+            os.execvp(cmd[0], cmd)
 
         return None
 
-    if not a.input_file:
+    if not (input_file := a.input_file):
         parser.error('generator mode requires -i/--input-file')
 
     from lib import generate, preview
     from moon.lock import wait_lock
 
     a.host = a.host_or_args[0] if a.host_or_args else None
-    a.state = a.last_state = None
 
     if (file := a.output_file) == '-':
         file = a.output_file = None
 
     if not file or a.force > 1:
-        if r := generate(a):
+        if r := generate(input_file, a):
             if file:
                 write_outputs(r, file)
             else:
@@ -173,11 +188,11 @@ def main():
                     dbg(f'{base}: updated {dt * 1000:.3f} ms ago, skipping')
                     return preview(file, a)
 
-                dep_mtime = max(os.path.getmtime(f) for f in (a.input_file, a.zone_file))
+                dep_mtime = max(os.path.getmtime(f) for f in (input_file, a.zone_file))
                 if mtime >= dep_mtime:
                     a.last_state = last_state
 
-        if r := generate(a):
+        if r := generate(input_file, a):
             write_outputs(r, file)
 
             if (state := a.state) and state != last_state:

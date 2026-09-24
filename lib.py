@@ -9,10 +9,15 @@ from moon.util import dbg, dbg_print, set_dbg
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from luna import Args
+
 try:
     from moon.util import console
 except ImportError:
-    register_highlights = None
+
+    def register_highlights(rules: Iterable[tuple[str, Iterable[str]]]) -> None:
+        pass
+
 else:
     import re
 
@@ -25,27 +30,31 @@ else:
         'repr.luna_host': 'bold bright_red',
     }
     console.push_theme(Theme(theme))
-    console.highlighter = ReprHighlighter()
 
-    def register_highlights(rules: Iterable[tuple[str, Iterable[str]]]):
-        console.highlighter.highlights[0:0] = [
-            re.compile(r'\b(?P<luna_' + name + r'>' + r'|'.join(words) + r')\b')
+    def register_highlights(rules: Iterable[tuple[str, Iterable[str]]]) -> None:
+        names = tuple(
+            r'\b(?P<luna_' + name + r'>' + r'|'.join(words) + r')\b'
             for name, strs in rules
             if (words := tuple(re.escape(s) for s in sorted(strs, key=len, reverse=True)))
-        ]
+        )
+
+        class Highlighter(ReprHighlighter):
+            highlights = (*names, *ReprHighlighter.highlights)
+
+        console.highlighter = Highlighter()
 
 
-def do_dbg(*args, must=False):
-    args = ('#', *map(str, args))
-    dbg_print(*args, must=must)
-    dbg_buf.append(args)
+def do_dbg(*args: object, must: bool = False) -> None:
+    line = ('#', *map(str, args))
+    dbg_print(*line, must=must)
+    dbg_buf.append(line)
 
 
-dbg_buf = []
+dbg_buf: list[tuple[str, ...]] = []
 set_dbg(do_dbg)
 
 
-def flush_dbg(file: TextIO):
+def flush_dbg(file: TextIO) -> None:
     set_dbg()
     for args in dbg_buf:
         print(*args, file=file)
@@ -60,17 +69,21 @@ class Writer(NamedTuple):
     write_flat: Callable[[TextIO], None]
 
 
-def generate(args) -> Writer | None:
-    with open(args.input_file, encoding='utf-8') as fp:
+def generate(input_file: str, args: Args) -> Writer | None:
+    with open(input_file, encoding='utf-8') as fp:
         c = Config(fp)
 
     cfg = ZoneConfig(args.zone_file, c)
     host = args.host
     cfg_hosts = tuple(c.hosts())
 
-    if register_highlights:
-        highlights = (('name', cfg_hosts), ('zone', cfg.zones()), ('host', (host,) if host else ()))
-        register_highlights(highlights)
+    register_highlights(
+        (
+            ('name', cfg_hosts),
+            ('zone', cfg.zones()),
+            ('host', (host,) if host else ()),
+        )
+    )
 
     if host and (real_host := cfg.resolve_direct(host)):
         dbg('Direct for', real_host, must=True)
@@ -91,7 +104,7 @@ def generate(args) -> Writer | None:
     if host := args.host:
         dbg_query(c, host)
 
-    def write(file: TextIO, cfg: Config = c, *, annotate: bool = True):
+    def write(file: TextIO, cfg: Config = c, *, annotate: bool = True) -> None:
         if args.header:
             print(args.header, file=file)
 
@@ -106,7 +119,7 @@ def generate(args) -> Writer | None:
     # VS Code Remote - SSH fails on inline comments and lists every `Host`, so the
     # flat config omits annotations and the generated 'd.' hosts, and keeps zone
     # aliases, which routes still jump through, out of the list.
-    def write_flat(file: TextIO):
+    def write_flat(file: TextIO) -> None:
         aliases = frozenset(g.aliases())
         listed = (h for h in cfg_hosts if h not in aliases)
         unlisted = (h for h in cfg_hosts if h in aliases)
@@ -115,7 +128,7 @@ def generate(args) -> Writer | None:
     return Writer(write, write_flat)
 
 
-def resolve(host: str, args) -> tuple[str, str]:
+def resolve(host: str, args: Args) -> tuple[str, str]:
     c = None
     if args.input_file:
         # The ssh_config is optional and only used for discovering hosts here.
@@ -124,9 +137,9 @@ def resolve(host: str, args) -> tuple[str, str]:
 
     cfg = ZoneConfig(args.zone_file, c)
 
-    if register_highlights:
-        highlights = (('name', c.hosts() if c else ()), ('zone', cfg.zones()), ('host', (host,)))
-        register_highlights(highlights)
+    register_highlights(
+        (('name', c.hosts() if c else ()), ('zone', cfg.zones()), ('host', (host,)))
+    )
 
     if real_host := cfg.resolve_direct(host):
         dbg('Direct for', real_host, must=True)
@@ -135,21 +148,20 @@ def resolve(host: str, args) -> tuple[str, str]:
     return cfg.route(host).resolve(host) or (host, '')
 
 
-def dbg_query(c: Config, host: str):
+def dbg_query(c: Config, host: str) -> None:
     groups = itertools.groupby(c.query(host), key=lambda line: line.blk)
     for blk, lines in groups:
         hosts = '<auto>' if blk.ext else ', '.join(blk.hosts)
         dbg(f'{hosts}: {', '.join(lines)}')
 
 
-def preview(file: str, args):
+def preview(file: str, args: Args) -> None:
     if not (host := args.host):
         return
 
     with open(file, encoding='utf-8') as fp:
         c = Config(fp)
 
-    if register_highlights:
-        register_highlights((('name', c.hosts()), ('host', (host,))))
+    register_highlights((('name', c.hosts()), ('host', (host,))))
 
     dbg_query(c, host)

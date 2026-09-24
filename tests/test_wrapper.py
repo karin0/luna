@@ -1,13 +1,12 @@
-import argparse
 import os
 import subprocess
 import sys
 
 import pytest
 
-from conftest import ROOT
+from conftest import ROOT, Tree
 
-from luna import find_host, rewrite
+from luna import Args, find_host, rewrite
 
 
 # ssh(1) argument shapes the wrapper has to see through to find the destination.
@@ -24,7 +23,7 @@ from luna import find_host, rewrite
         ([], None),
     ],
 )
-def test_find_host(argv, found):
+def test_find_host(argv: list[str], found: tuple[int, str] | None):
     assert find_host(argv) == found
 
 
@@ -40,14 +39,12 @@ def test_find_host(argv, found):
         ('unmanaged.example.com', ('unmanaged.example.com',)),
     ],
 )
-def test_rewrite(tree, dest, rewritten):
-    args = argparse.Namespace(
-        input_file=str(tree.input_file), zone_file=str(tree.zone_file), host=None
-    )
+def test_rewrite(tree: Tree, dest: str, rewritten: tuple[str, ...]):
+    args = Args(input_file=str(tree.input_file), zone_file=str(tree.zone_file))
     assert tuple(rewrite([dest, 'uptime'], args)) == (*rewritten, 'uptime')
 
 
-def test_print_cmd_routes_without_an_input_file(tree):
+def test_print_cmd_routes_without_an_input_file(tree: Tree):
     # The input file only feeds host discovery, so leaving it out still routes.
     argv = (sys.executable, str(ROOT / 'luna.py'), '-p', '-z', str(tree.zone_file), '--', 'ofbox')
     out = subprocess.run(
