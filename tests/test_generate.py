@@ -91,3 +91,56 @@ def test_generator_requires_an_input_file(tree):
     )
     assert r.returncode == 2
     assert '-i/--input-file' in r.stderr
+
+
+HEADER = '# Generated for the test'
+
+
+def generate_files(tree, tmp_path, force: str):
+    out = tmp_path / 'config.inc'
+    argv = (
+        sys.executable,
+        str(ROOT / 'luna.py'),
+        '-z',
+        str(tree.zone_file),
+        '-i',
+        str(tree.input_file),
+        '-o',
+        str(out),
+        '-H',
+        HEADER,
+        force,
+        'ofbox',
+    )
+    subprocess.run(
+        argv, check=True, capture_output=True, timeout=30, env=os.environ | {'LUNA_MUTE': '1'}
+    )
+    return out, out.with_name(out.name + '.stub')
+
+
+# '-f' goes through the lock and '-ff' skips it; both write the stub.
+@pytest.mark.parametrize('force', ['-f', '-ff'])
+def test_stub_lists_the_input_hosts_with_their_routes(tree, tmp_path, force):
+    _, stub = generate_files(tree, tmp_path, force)
+    text = stub.read_text(encoding='utf-8')
+    cfg = Config(StringIO(text))
+
+    # VS Code Remote - SSH breaks on inline comments; full-line ones are fine.
+    assert all(line.startswith('#') for line in text.splitlines() if '#' in line)
+    assert HEADER in text
+    # The generated 'd.' hosts stay out of the client's host list.
+    assert sorted(cfg.hosts()) == ['box1', 'gw1', 'ofbox', 'ofgw']
+    assert 'ProxyJump ofgw' in opts(cfg, 'ofbox')
+
+
+@pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
+def test_stub_is_accepted_by_ssh(tree, tmp_path):
+    _, stub = generate_files(tree, tmp_path, '-f')
+    out = subprocess.run(
+        ('ssh', '-G', '-F', str(stub), 'ofbox'),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout
+    assert 'proxyjump ofgw' in out.splitlines()

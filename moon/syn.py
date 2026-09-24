@@ -98,8 +98,8 @@ class Block:
 
     __repr__ = __str__
 
-    def print(self, file: TextIO) -> None:
-        if comment := ' '.join(self.comment.split()):
+    def print(self, file: TextIO, *, annotate: bool = True) -> None:
+        if annotate and (comment := ' '.join(self.comment.split())):
             file.write(self.header)
             file.write('  # ')
             print(comment, file=file)
@@ -110,7 +110,7 @@ class Block:
             if self.ext:
                 file.write('  ')
             if isinstance(line, Line):
-                if line.blk is not last_ref:
+                if annotate and line.blk is not last_ref:
                     last_ref = line.blk
                     if header := line.blk.header.strip():
                         line += '  # ' + header
@@ -187,15 +187,17 @@ class Config:
                 else:
                     self._host_map[host].append(blk)
 
-    def print(self, file: TextIO = sys.stdout, separator: str | None = None) -> None:
+    def print(
+        self, file: TextIO = sys.stdout, separator: str | None = None, *, annotate: bool = True
+    ) -> None:
         for blk in self._ext_blks:
-            blk.print(file)
+            blk.print(file, annotate=annotate)
 
         if separator is not None and self._ext_blks and self._blks:
             print(separator, file=file)
 
         for blk in self._blks:
-            blk.print(file)
+            blk.print(file, annotate=annotate)
 
     def sub(self, repl: Callable[[str], str]) -> dict[str, str]:
         res = {}
