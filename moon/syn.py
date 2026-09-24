@@ -144,7 +144,6 @@ class Config:
         self._blks: list[Block] = []
         self._ext_blks: list[Block] = []
         self._ext_cache: dict[tuple[str, ...], Block] = {}
-        self._query_opts: set[str] = set()
 
         if fp:
             self.load(fp)
@@ -201,8 +200,9 @@ class Config:
     def attach(self, name: str, host: str) -> None:
         if name != host:
             old = {l.dir for l in self._query(name)}
-            lines: list[str] = [l for l in self._query(host) if l.dir not in old]
-            if 'hostname' not in self._query_opts:
+            src = tuple(self._query(host))
+            lines: list[str] = [l for l in src if l.dir not in old]
+            if all(l.dir.opt != 'hostname' for l in src):
                 lines.append(f'Hostname {host}')
             self.add_host((name,), lines, comment=f'inherits from {host}')
 
@@ -243,8 +243,7 @@ class Config:
             if blk not in blks and blk.test(host):
                 blks.add(blk)
 
-        vis = self._query_opts
-        vis.clear()
+        vis: set[str] = set()
 
         # Sort and unique. Extended blocks prioritized.
         for blk in sorted(blks, key=lambda blk: (not blk.ext, blk.no)):
