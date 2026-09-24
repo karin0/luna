@@ -177,7 +177,8 @@ def main() -> None:
         # Check if the file is updated too recently.
         # We check this after acquiring the lock, to avoid terminating before
         # the holding process finishes writing.
-        if not a.force:
+        # A missing state means the file carries no routes, as after a direct run.
+        if not a.force and last_state is not None:
             try:
                 mtime = os.path.getmtime(file)
             except FileNotFoundError:
@@ -195,7 +196,7 @@ def main() -> None:
         if r := generate(input_file, a):
             write_outputs(r, file)
 
-            if (state := a.state) and state != last_state:
+            if (state := a.state) is not None and state != last_state:
                 with open(state_file, 'w', encoding='utf-8') as fp:
                     fp.write(state)
         else:

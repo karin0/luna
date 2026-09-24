@@ -170,7 +170,7 @@ hosts whose names start with its name become its aliases.
 
 ## Generator mode details
 
-`install.sh` runs luna in `~/.ssh` and skips regeneration when `config.inc` was written in the
+`install.sh` runs luna in `~/.ssh` and skips regeneration when luna wrote `config.inc` in the
 last two seconds, or when neither `sshconfig` nor `zone.ini` changed and the network state recorded
 in `config.inc.state` still holds. Concurrent connections take turns on `config.inc.lock`, and a
 connection that had to wait uses the file the previous one wrote. Options applied by `Match` or
