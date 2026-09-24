@@ -8,35 +8,50 @@ from contextlib import contextmanager
 from io import StringIO
 from typing import TYPE_CHECKING
 
+from moon.syn import Directive
 from moon.util import dbg
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable, Sequence
+    from collections.abc import Generator, Iterable, Iterator, Sequence
 
     from lib import Writer
 
 
-def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
-    # ssh(1)
-    flags = frozenset('46AaCfGgKkMNnqsTtVvXxYy')
+# ssh(1): the options that take no argument.
+FLAGS = frozenset('46AaCfGgKkMNnqsTtVvXxYy')
 
-    # Find the first positional argument (host/destination).
+JUMP_OPTS = frozenset(('proxycommand', 'proxyjump'))
+
+
+def walk(argv: Iterable[str]) -> Iterator[tuple[int, str, str]]:
+    # Yields each option that takes an argument as (index, letter, value), and
+    # then the destination, the first positional argument, as (index, '', host).
     it = iter(enumerate(argv))
-    while t := next(it, None):
-        if (a := t[1]) and a[0] == '-':
-            if a == '--':
-                return next(it, None)
+    for i, a in it:
+        if a == '--':
+            if t := next(it, None):
+                yield t[0], '', t[1]
+            return
 
-            a = a[1:]
-            for i, c in enumerate(a):
-                if c not in flags:
-                    # All other options take an argument.
-                    if i == len(a) - 1:
-                        # The next argument is its value.
-                        next(it, None)
-                    break
-        else:
-            return t if a else None
+        if not a or a[0] != '-':
+            if a:
+                yield i, '', a
+            return
+
+        for j, c in enumerate(a[1:], 2):
+            if c not in FLAGS:
+                # The value is the rest of the word, or else the next word.
+                yield i, c, a[j:] or next(it, (i, ''))[1]
+                break
+
+
+def find_host(argv: Iterable[str]) -> tuple[int, str] | None:
+    return next(((i, v) for i, c, v in walk(argv) if not c), None)
+
+
+def sets_jump(opts: Iterable[str]) -> bool:
+    # An `-o` value is written in ssh_config(5) syntax.
+    return any(c == 'J' or (c == 'o' and Directive(v).opt in JUMP_OPTS) for _, c, v in walk(opts))
 
 
 class Args(argparse.Namespace):
@@ -60,6 +75,10 @@ def rewrite(argv: list[str], args: Args) -> Sequence[str]:
         return argv
 
     idx, host = t
+    if sets_jump(argv[:idx]):
+        # The command line takes precedence over ssh_config in generator mode too.
+        return argv
+
     if (p := host.find('@')) >= 0:
         prefix = host[: p + 1]
         host = host[p + 1 :]
