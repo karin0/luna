@@ -16,7 +16,8 @@ computes the shortest path to the destination, and turns it into a `ProxyJump` c
   active virtualenv before starting it.
 - Optionally `rich` for colored diagnostics, and `netifaces-plus` for faster network detection.
   Install them into that same interpreter. They are also declared as the `rich` and `netifaces`
-  extras.
+  extras. On macOS a zone with a `subnet` needs `netifaces-plus`, since luna otherwise reads the
+  interfaces from `ip addr`.
 
 ## Quick start
 
