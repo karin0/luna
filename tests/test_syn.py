@@ -26,7 +26,8 @@ def opts(cfg: Config, host: str) -> list[str]:
         ('Port 2222  # trailing', 'port', ('2222',)),
         # Only the separator is consumed; a value keeps its own '='.
         ('SetEnv FOO=bar', 'setenv', ('FOO=bar',)),
-        ('ProxyCommand = nc %h %p', 'proxycommand', ('nc', '%h', '%p')),
+        # ssh hands a command to the shell as one string.
+        ('ProxyCommand = nc %h %p', 'proxycommand', ('nc %h %p',)),
         ('Port="2222"', 'port', ('2222',)),
         ('# Port=2222', '', ()),
         ('', '', ()),
@@ -47,6 +48,19 @@ def test_hostname_survives_a_spaced_separator():
 def test_rendered_directive_carries_its_value():
     # ssh rejects the whole file when a keyword arrives with no argument.
     assert str(Directive('Port=2222')) == 'Port 2222'
+
+
+@pytest.mark.parametrize(
+    'line',
+    [
+        'ProxyCommand nc %h %p 2>/dev/null',
+        'ProxyCommand ssh -W %h:%p jump | cat',
+        'LocalCommand echo $HOME; date',
+        "LocalCommand echo don't",
+    ],
+)
+def test_rendered_command_keeps_its_shell_syntax(line: str):
+    assert str(Directive(line)) == line
 
 
 # ssh_config(5) PATTERNS: '?' matches exactly one character.
