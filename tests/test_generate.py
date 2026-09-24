@@ -77,3 +77,17 @@ def test_generated_config_is_accepted_by_ssh(tree, tmp_path):
     subprocess.run(
         ('ssh', '-G', '-F', str(out), 'ofbox'), check=True, capture_output=True, timeout=30
     )
+
+
+def test_generator_requires_an_input_file(tree):
+    argv = (sys.executable, str(ROOT / 'luna.py'), '-z', str(tree.zone_file), '-o', '-')
+    r = subprocess.run(
+        argv,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=os.environ | {'LUNA_MUTE': '1'},
+    )
+    assert r.returncode == 2
+    assert '-i/--input-file' in r.stderr

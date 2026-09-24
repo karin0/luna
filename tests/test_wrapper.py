@@ -1,6 +1,11 @@
 import argparse
+import os
+import subprocess
+import sys
 
 import pytest
+
+from conftest import ROOT
 
 from luna import find_host, rewrite
 
@@ -40,3 +45,18 @@ def test_rewrite(tree, dest, rewritten):
         input_file=str(tree.input_file), zone_file=str(tree.zone_file), host=None
     )
     assert tuple(rewrite([dest, 'uptime'], args)) == (*rewritten, 'uptime')
+
+
+def test_print_cmd_routes_without_an_input_file(tree):
+    # The input file only feeds host discovery, so leaving it out still routes.
+    argv = (sys.executable, str(ROOT / 'luna.py'), '-p', '-z', str(tree.zone_file), '--', 'ofbox')
+    out = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+        cwd=tree.zone_file.parent,
+        env=os.environ | {'LUNA_MUTE': '1'},
+    ).stdout
+    assert out == 'ssh -J ofgw ofbox\n'
