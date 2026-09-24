@@ -10,6 +10,7 @@ netifaces = ["netifaces-plus>=0.12.5"]
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.411",
     "pytest>=9.1.1",
     "ruff>=0.15.12",
 ]
@@ -43,8 +44,6 @@ ignore = [
     "COM812",
 
     "BLE001",
-    "DTZ005",
-    "DTZ006",
     "N818",
     "PLW0603",
     "PLW1508",
@@ -97,3 +96,7 @@ multiline-quotes = "single"
 
 [tool.ruff.lint.isort]
 lines-between-types = 1
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"

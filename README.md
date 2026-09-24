@@ -190,6 +190,7 @@ generator mode the same diagnostics are also written into `config.inc` as commen
 uv sync --all-extras
 uv run ruff check
 uv run ruff format --check
+uv run pyright
 uv run pytest
 ```
 

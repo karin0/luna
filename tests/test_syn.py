@@ -32,7 +32,7 @@ def opts(cfg: Config, host: str) -> list[str]:
         ('', '', ()),
     ],
 )
-def test_directive_separators(line, opt, values):
+def test_directive_separators(line: str, opt: str, values: tuple[str, ...]):
     d = Directive(line)
     assert d.opt == opt
     assert d.values == values
@@ -54,7 +54,7 @@ def test_rendered_directive_carries_its_value():
     ('host', 'hit'),
     [('web1', True), ('webx', True), ('web', False), ('web12', False)],
 )
-def test_single_character_wildcard(host, hit):
+def test_single_character_wildcard(host: str, hit: bool):
     cfg = Config(StringIO('Host web?\n  Port 2022\n'))
     assert (opts(cfg, host) == ['Port 2022']) is hit
 
@@ -67,7 +67,9 @@ def test_patterns_are_not_host_names():
 
 def test_a_block_is_registered_once_however_many_patterns_it_carries():
     cfg = Config(StringIO('Host *.a *.b *.c\n  Port 22\n'))
-    assert len(cfg._wildcards) == len(set(cfg._wildcards))
+    # `query` merges repeated blocks, so only the registry shows a duplicate.
+    wildcards = cfg._wildcards  # pyright: ignore[reportPrivateUsage]
+    assert len(wildcards) == len(set(wildcards))
 
 
 def test_negated_pattern_excludes_a_host():

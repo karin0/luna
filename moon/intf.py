@@ -1,6 +1,6 @@
 import os
 
-from ipaddress import AddressValueError, IPv4Address, IPv4Interface, IPv4Network
+from ipaddress import IPv4Interface, IPv4Network
 
 try:
     import netifaces
@@ -56,28 +56,3 @@ class Interfaces:
             for intf_net, intf in self.ints.items():
                 if (as_sub and net.subnet_of(intf_net)) or (as_super and intf_net.subnet_of(net)):
                     return intf
-
-
-if netifaces:
-    # `netifaces.gateways()` is faster than checking all interfaces.
-
-    class Gateways:
-        def __init__(self):
-            self._gws: set[IPv4Address] = set()
-            for gw in netifaces.gateways().values():
-                for t in gw.values() if isinstance(gw, dict) else gw:
-                    try:
-                        ip = IPv4Address(t[0])
-                    except AddressValueError:
-                        pass
-                    else:
-                        if not ip.is_loopback:
-                            self._gws.add(ip)
-
-        def __str__(self) -> str:
-            return 'gateways: ' + ', '.join(sorted(map(str, self._gws)))
-
-        def check_subnet(self, net: IPv4Network) -> IPv4Address | None:
-            for gw in self._gws:
-                if gw in net:
-                    return gw

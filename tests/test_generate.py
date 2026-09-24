@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 from io import StringIO
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,7 @@ from conftest import ROOT, SSH_CONFIG, Tree
 from moon.syn import Config
 
 
-def generate(tree, host: str) -> Config:
+def generate(tree: Tree, host: str) -> Config:
     argv = (
         sys.executable,
         str(ROOT / 'luna.py'),
@@ -39,15 +40,15 @@ def opts(cfg: Config, host: str) -> list[str]:
     return [str(line) for line in cfg.query(host)]
 
 
-def test_remote_zone_is_reached_through_its_gateway(tree):
+def test_remote_zone_is_reached_through_its_gateway(tree: Tree):
     assert 'ProxyJump ofgw' in opts(generate(tree, 'ofbox'), 'ofbox')
 
 
-def test_local_zone_needs_no_jump(tree):
+def test_local_zone_needs_no_jump(tree: Tree):
     assert 'proxyjump' not in {line.dir.opt for line in generate(tree, 'box1').query('box1')}
 
 
-def test_direct_alias_inherits_the_connection_options(tree):
+def test_direct_alias_inherits_the_connection_options(tree: Tree):
     # 'd.<host>' exists to bypass the jump chain, so it needs the whole set.
     assert opts(generate(tree, 'ofbox'), 'd.ofgw') == [
         'Hostname 192.168.1.1',
@@ -56,7 +57,7 @@ def test_direct_alias_inherits_the_connection_options(tree):
 
 
 @pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
-def test_generated_config_is_accepted_by_ssh(tree, tmp_path):
+def test_generated_config_is_accepted_by_ssh(tree: Tree, tmp_path: Path):
     out = tmp_path / 'config.inc'
     argv = (
         sys.executable,
@@ -79,7 +80,7 @@ def test_generated_config_is_accepted_by_ssh(tree, tmp_path):
     )
 
 
-def test_generator_requires_an_input_file(tree):
+def test_generator_requires_an_input_file(tree: Tree):
     argv = (sys.executable, str(ROOT / 'luna.py'), '-z', str(tree.zone_file), '-o', '-')
     r = subprocess.run(
         argv,
@@ -96,7 +97,7 @@ def test_generator_requires_an_input_file(tree):
 HEADER = '# Generated for the test'
 
 
-def generate_files(tree, tmp_path, force: str):
+def generate_files(tree: Tree, tmp_path: Path, force: str) -> tuple[Path, Path]:
     out = tmp_path / 'config.inc'
     argv = (
         sys.executable,
@@ -120,7 +121,9 @@ def generate_files(tree, tmp_path, force: str):
 
 # '-f' goes through the lock and '-ff' skips it; both write the flat config.
 @pytest.mark.parametrize('force', ['-f', '-ff'])
-def test_flat_config_lists_the_input_hosts_with_their_routes(tree, tmp_path, force):
+def test_flat_config_lists_the_input_hosts_with_their_routes(
+    tree: Tree, tmp_path: Path, force: str
+):
     _, flat = generate_files(tree, tmp_path, force)
     text = flat.read_text(encoding='utf-8')
     cfg = Config(StringIO(text))
@@ -134,7 +137,7 @@ def test_flat_config_lists_the_input_hosts_with_their_routes(tree, tmp_path, for
 
 
 @pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
-def test_flat_config_is_accepted_by_ssh(tree, tmp_path):
+def test_flat_config_is_accepted_by_ssh(tree: Tree, tmp_path: Path):
     _, flat = generate_files(tree, tmp_path, '-f')
     out = subprocess.run(
         ('ssh', '-G', '-F', str(flat), 'ofbox'),
@@ -164,7 +167,7 @@ Host ofgw-pub
 
 
 @pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
-def test_flat_config_resolves_an_unlisted_jump_alias(tmp_path):
+def test_flat_config_resolves_an_unlisted_jump_alias(tmp_path: Path):
     tree = Tree(tmp_path / 'zone.ini', tmp_path / 'sshconfig')
     tree.zone_file.write_text(ALIAS_ZONE_FILE, encoding='utf-8')
     tree.input_file.write_text(SSH_CONFIG + ALIAS_HOST, encoding='utf-8')

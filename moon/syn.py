@@ -41,7 +41,7 @@ class Directive:
     def __hash__(self) -> int:
         return hash((self.opt, self.values))
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, Directive) and self.opt == other.opt and self.values == other.values
         )
@@ -85,7 +85,7 @@ class Block:
             elif d := Directive.parse(line):
                 yield Line(str(d), self, d)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.lines)
 
     def __str__(self) -> str:
@@ -103,12 +103,12 @@ class Block:
             print(comment, file=file)
         else:
             print(self.header, file=file)
-        last_ref = None
+        last_ref: Block | None = None
         for line in self.lines:
             if self.ext:
                 file.write('  ')
             if isinstance(line, Line):
-                if annotate and line.blk is not last_ref:
+                if annotate and last_ref is not line.blk:
                     last_ref = line.blk
                     if header := line.blk.header.strip():
                         line += '  # ' + header
@@ -143,8 +143,8 @@ class Config:
         self._wildcards: list[Block] = []
         self._blks: list[Block] = []
         self._ext_blks: list[Block] = []
-        self._ext_cache: dict[tuple, Block] = {}
-        self._query_opts = set()
+        self._ext_cache: dict[tuple[str, ...], Block] = {}
+        self._query_opts: set[str] = set()
 
         if fp:
             self.load(fp)
@@ -152,7 +152,7 @@ class Config:
     def load(self, fp: TextIO) -> None:
         default_blk = blk = Block(hosts=('*',))
 
-        def flush(new_blk):
+        def flush(new_blk: Block) -> None:
             nonlocal blk
             self._push_blk(blk)
             blk = new_blk
@@ -166,7 +166,7 @@ class Config:
                 flush(Block(line))
             elif line.lstrip():
                 blk.push(line)
-        flush(None)
+        self._push_blk(blk)
 
         if default_blk:
             default_blk.header = 'Host *  # Default'
@@ -201,7 +201,7 @@ class Config:
     def attach(self, name: str, host: str) -> None:
         if name != host:
             old = {l.dir for l in self._query(name)}
-            lines = [l for l in self._query(host) if l.dir not in old]
+            lines: list[str] = [l for l in self._query(host) if l.dir not in old]
             if 'hostname' not in self._query_opts:
                 lines.append(f'Hostname {host}')
             self.add_host((name,), lines, comment=f'inherits from {host}')

@@ -2,8 +2,12 @@ import os
 import sys
 
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 from .util import dbg
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 if sys.platform == 'win32':
     # `msvcrt.locking` doesn't really block and only polls every second, and `filelock`
@@ -57,17 +61,17 @@ if sys.platform == 'win32':
     # https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-
     ERROR_LOCK_VIOLATION = 0x21
 
-    def _overlapped():
+    def _overlapped() -> ctypes._CArgObject:
         r = OVERLAPPED()
         r.Offset = 0
         r.OffsetHigh = 0
         return ctypes.byref(r)
 
     class FileLock:
-        def __init__(self, fd):
+        def __init__(self, fd: int) -> None:
             self._handle = msvcrt.get_osfhandle(fd)
 
-        def acquire(self, blocking=True):
+        def acquire(self, *, blocking: bool = True) -> None:
             flags = LOCKFILE_EXCLUSIVE_LOCK
             if not blocking:
                 flags |= LOCKFILE_FAIL_IMMEDIATELY
@@ -78,7 +82,7 @@ if sys.platform == 'win32':
                     raise BlockingIOError
                 raise ctypes.WinError(code)
 
-        def release(self):
+        def release(self) -> None:
             if not UnlockFileEx(self._handle, 0, 1, 0, _overlapped()):
                 raise ctypes.WinError()
 
@@ -86,21 +90,21 @@ else:
     import fcntl
 
     class FileLock:
-        def __init__(self, fd):
+        def __init__(self, fd: int) -> None:
             self._fd = fd
 
-        def acquire(self, blocking=True):
+        def acquire(self, *, blocking: bool = True) -> None:
             flags = fcntl.LOCK_EX
             if not blocking:
                 flags |= fcntl.LOCK_NB
             fcntl.flock(self._fd, flags)
 
-        def release(self):
+        def release(self) -> None:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
 
 
 @contextmanager
-def wait_lock(file):
+def wait_lock(file: str) -> Generator[bool]:
     fd = os.open(file, os.O_RDONLY | os.O_CREAT)
     lock = FileLock(fd)
 
