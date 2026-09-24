@@ -8,9 +8,7 @@ from fnmatch import fnmatch
 from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
-
-SUB_REG = r'\{\{(.+?)\}\}'
+    from collections.abc import Iterable, Sequence
 
 # ssh_config(5): a keyword is separated from its values by whitespace, or by
 # optional whitespace around exactly one '='.
@@ -198,29 +196,6 @@ class Config:
 
         for blk in self._blks:
             blk.print(file, annotate=annotate)
-
-    def sub(self, repl: Callable[[str], str]) -> dict[str, str]:
-        res = {}
-        keys = []
-
-        def _repl(m: re.Match) -> str:
-            key = m[1].strip()
-            keys.append(key)
-            val = repl(key)
-            res[key] = val.split('#', maxsplit=1)[0].strip()
-            return val
-
-        def _trans(line: str) -> str:
-            r = re.sub(SUB_REG, _repl, line)
-            if keys:
-                r += ' # ' + '; '.join(keys)
-                keys.clear()
-            return r
-
-        for blk in self._blks:
-            blk.lines = [_trans(line) for line in blk.lines]
-
-        return res
 
     # Attach `name` as an alias of `host`.
     def attach(self, name: str, host: str) -> None:

@@ -1,6 +1,5 @@
 import datetime
 import functools
-import importlib.util
 import os
 
 from configparser import ConfigParser
@@ -52,27 +51,12 @@ def in_zone(tz: float | None, subnets: Sequence[IPv4Network]) -> bool:
     return True
 
 
-CWD = os.path.realpath(os.getcwd())
-
-
-def load_hook(file):
-    # The hook file must be inside the cwd.
-    if os.path.commonpath((CWD, os.path.realpath(file))) != CWD:
-        raise ValueError(file)
-
-    spec = importlib.util.spec_from_file_location('hook', file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
 class ZoneConfig:
     def __init__(self, file, conf: Config | None = None) -> None:
         self._cfg = cfg = ConfigParser()
         if not cfg.read(file):
             raise FileNotFoundError(file)
 
-        self._hooks = hooks = []
         self._g = g = ZoneSet()
 
         self._zones: dict[str, Zone] = {}
@@ -148,9 +132,6 @@ class ZoneConfig:
         for sect, hosts, subnets in zone_stubs:
             zones[sect] = zone = g.add(hosts)
             self._conds.append((cfg.getfloat(sect, 'timezone', fallback=None), subnets))
-
-            if hook := cfg.get(sect, 'hook', fallback=None):
-                hooks.append(load_hook(hook))
 
         def parse_arc(arc: str) -> tuple[Zone | None, str, int | None]:
             parts = arc.split(':')
@@ -244,11 +225,6 @@ class ZoneConfig:
             dbg(way, '->', z, f'({dist})', must=must)
 
         return g
-
-    def run_hooks(self, name, *args, **kwargs):
-        for h in self._hooks:
-            if f := getattr(h, name, None):
-                f(*args, **kwargs)
 
     def resolve_direct(self, host: str) -> str | None:
         if host not in self._g:
