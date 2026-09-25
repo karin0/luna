@@ -25,18 +25,22 @@ JUMP_OPTS = frozenset(('proxycommand', 'proxyjump'))
 
 def walk(argv: Iterable[str]) -> Iterator[tuple[int, str, str]]:
     # Yields each option that takes an argument as (index, letter, value), and
-    # then the destination, the first positional argument, as (index, '', host).
+    # the destination, the first positional argument, as (index, '', host).
+    # ssh keeps parsing options after the destination, up to the command.
     it = iter(enumerate(argv))
+    found = False
     for i, a in it:
         if a == '--':
-            if t := next(it, None):
+            if not found and (t := next(it, None)):
                 yield t[0], '', t[1]
             return
 
         if not a or a[0] != '-':
-            if a:
-                yield i, '', a
-            return
+            if found or not a:
+                return
+            found = True
+            yield i, '', a
+            continue
 
         for j, c in enumerate(a[1:], 2):
             if c not in FLAGS:
@@ -75,7 +79,7 @@ def rewrite(argv: list[str], args: Args) -> Sequence[str]:
         return argv
 
     idx, host = t
-    if sets_jump(argv[:idx]):
+    if sets_jump(argv):
         # The command line takes precedence over ssh_config in generator mode too.
         return argv
 

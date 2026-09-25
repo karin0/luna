@@ -52,6 +52,8 @@ def test_rewrite(tree: Tree, dest: str, rewritten: tuple[str, ...]):
         ['-o', 'ProxyJump=other', 'ofbox'],
         ['-oProxyCommand nc %h %p', 'ofbox'],
         ['-o', 'proxyjump none', 'ofbox'],
+        ['ofbox', '-J', 'other'],
+        ['ofbox', '-o', 'ProxyJump=other', 'uptime'],
     ],
 )
 def test_rewrite_keeps_a_jump_given_on_the_command_line(tree: Tree, argv: list[str]):
@@ -69,6 +71,12 @@ def test_rewrite_routes_past_other_options(tree: Tree):
         'User=me',
         'ofbox',
     )
+
+
+def test_rewrite_leaves_the_command_unparsed(tree: Tree):
+    args = Args(input_file=str(tree.input_file), zone_file=str(tree.zone_file))
+    argv = ['ofbox', 'grep', '-J', 'x']
+    assert tuple(rewrite(list(argv), args)) == ('-J', 'ofgw', *argv)
 
 
 def test_print_cmd_routes_without_an_input_file(tree: Tree):
