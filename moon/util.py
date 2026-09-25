@@ -1,31 +1,59 @@
 import os
+import re
 import sys
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
+
+# (style, pattern) pairs for rich to apply to the matching words.
+_highlights: tuple[tuple[str, str], ...] = ()
+
+
+def highlight(rules: Iterable[tuple[str, Iterable[str]]]) -> None:
+    global _highlights
+    _highlights = tuple(
+        (style, r'\b(?:' + '|'.join(words) + r')\b')
+        for style, strs in rules
+        if (words := tuple(re.escape(s) for s in sorted(strs, key=len, reverse=True)))
+    )
 
 
 def _plain(line: tuple[str, ...], must: bool) -> None:
     print(*line, file=sys.stderr, flush=True)
 
 
-_emit: Callable[[tuple[str, ...], bool], None] = _plain
-if sys.stderr.isatty():
+def _init_rich(line: tuple[str, ...], must: bool) -> None:
+    # Importing rich costs about as much as starting Python, so a run that
+    # prints nothing never pays for it.
+    global _emit
     try:
         from rich.console import Console
     except ImportError:
-        pass
+        _emit = _plain
     else:
+        from rich.highlighter import ReprHighlighter
         from rich.markup import escape
+        from rich.text import Text
 
-        console = Console(file=sys.stderr)
+        class Highlighter(ReprHighlighter):
+            def highlight(self, text: Text) -> None:
+                for style, pattern in _highlights:
+                    text.highlight_regex(pattern, style)
+                super().highlight(text)
 
-        def _rich(line: tuple[str, ...], must: bool) -> None:
+        console = Console(file=sys.stderr, highlighter=Highlighter())
+
+        def emit(line: tuple[str, ...], must: bool) -> None:
             console.print(*map(escape, line), style=None if must else 'dim')
 
-        _emit = _rich
+        _emit = emit
+
+    _emit(line, must)
+
+
+_emit: Callable[[tuple[str, ...], bool], None] = _init_rich if sys.stderr.isatty() else _plain
 
 _MUTE = 'LUNA_MUTE' in os.environ
 _VERBOSE = 'LUNA_VERBOSE' in os.environ

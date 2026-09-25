@@ -5,44 +5,17 @@ from typing import TYPE_CHECKING, NamedTuple, TextIO
 from cfg import ZoneConfig
 from moon import util
 from moon.syn import Config
-from moon.util import dbg
+from moon.util import dbg, highlight
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable
 
     from luna import Args
 
-try:
-    from moon.util import console
-except ImportError:
-
-    def register_highlights(rules: Iterable[tuple[str, Iterable[str]]]) -> None:
-        pass
-
-else:
-    import re
-
-    from rich.highlighter import ReprHighlighter
-    from rich.theme import Theme
-
-    theme = {
-        'repr.luna_name': 'italic bright_yellow',
-        'repr.luna_zone': 'bright_blue',
-        'repr.luna_host': 'bold bright_red',
-    }
-    console.push_theme(Theme(theme))
-
-    def register_highlights(rules: Iterable[tuple[str, Iterable[str]]]) -> None:
-        names = tuple(
-            r'\b(?P<luna_' + name + r'>' + r'|'.join(words) + r')\b'
-            for name, strs in rules
-            if (words := tuple(re.escape(s) for s in sorted(strs, key=len, reverse=True)))
-        )
-
-        class Highlighter(ReprHighlighter):
-            highlights = (*names, *ReprHighlighter.highlights)
-
-        console.highlighter = Highlighter()
+# Styles for the host names from ssh_config, the zones and the destination.
+NAME = 'italic bright_yellow'
+ZONE = 'bright_blue'
+HOST = 'bold bright_red'
 
 
 def flush_dbg(file: TextIO) -> None:
@@ -67,11 +40,11 @@ def generate(input_file: str, args: Args) -> Writer | None:
     host = args.host
     cfg_hosts = tuple(c.hosts())
 
-    register_highlights(
+    highlight(
         (
-            ('name', cfg_hosts),
-            ('zone', cfg.zones()),
-            ('host', (host,) if host else ()),
+            (NAME, cfg_hosts),
+            (ZONE, cfg.zones()),
+            (HOST, (host,) if host else ()),
         )
     )
 
@@ -127,9 +100,7 @@ def resolve(host: str, args: Args) -> tuple[str, str]:
 
     cfg = ZoneConfig(args.zone_file, c)
 
-    register_highlights(
-        (('name', c.hosts() if c else ()), ('zone', cfg.zones()), ('host', (host,)))
-    )
+    highlight(((NAME, c.hosts() if c else ()), (ZONE, cfg.zones()), (HOST, (host,))))
 
     if real_host := cfg.resolve_direct(host):
         dbg('Direct for', real_host, must=True)
@@ -152,6 +123,6 @@ def preview(file: str, args: Args) -> None:
     with open(file, encoding='utf-8') as fp:
         c = Config(fp)
 
-    register_highlights((('name', c.hosts()), ('host', (host,))))
+    highlight(((NAME, c.hosts()), (HOST, (host,))))
 
     dbg_query(c, host)
