@@ -17,7 +17,7 @@ while true; do
 done
 
 
-if [ -v LUNA_MUTE ]; then
+if [ -v LUNA_MUTE ] || [ ! -v LUNA_VERBOSE ]; then
   dbg() { :; }
   arg=
 else
