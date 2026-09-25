@@ -1,4 +1,5 @@
 import functools
+import itertools
 import re
 import shlex
 import sys
@@ -58,21 +59,19 @@ class Directive:
         )
 
 
-blk_no = 0
+_blk_no = itertools.count()
 
 
 class Block:
     def __init__(
         self, header: str = '', hosts: Sequence[str] = (), ext: bool = False, comment: str = ''
     ):
-        global blk_no
         self.header = header
         self.hosts = list(hosts)
         self.lines: list[str] = []
         self.ext = ext
         self.comment = comment
-        self.no = blk_no
-        blk_no += 1
+        self.no = next(_blk_no)
 
     def push(self, line: str):
         self.lines.append(line)
@@ -232,10 +231,7 @@ class Config:
                 blk.header += ' ' + ' '.join(hosts)
                 blk.hosts.extend(hosts)
                 for host in hosts:
-                    if old := self._host_map.get(host):
-                        old.append(blk)
-                    else:
-                        self._host_map[host] = [blk]
+                    self._host_map[host].append(blk)
         else:
             header = 'Host ' + ' '.join(hosts)
             blk = Block(header, hosts, ext=True, comment=comment)
@@ -278,15 +274,11 @@ class Config:
 
     def hostnames(self) -> Iterable[tuple[str, str]]:
         for host, blks in self._host_map.items():
-            for blk in blks:
-                for line in blk.trimmed():
-                    d = line.dir
-                    if d.opt == 'hostname' and d.values:
-                        yield host, d.values[0]
-                        break
-                else:
-                    continue
-                break
+            dirs = (line.dir for blk in blks for line in blk.trimmed())
+            if hostname := next(
+                (d.values[0] for d in dirs if d.opt == 'hostname' and d.values), None
+            ):
+                yield host, hostname
 
     # `unlisted` hosts get `Match originalhost` blocks, which ssh matches like
     # `Host` but which are no connection targets for clients that list them.
