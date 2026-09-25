@@ -148,11 +148,14 @@ All keys of a zone are optional.
 another address of the same host that other zones can jump to, such as a public address, so it may
 be unreachable from the host's own zone.
 
-`timezone` and `subnet` decide whether the machine is in the zone. When `timezone` is set, the
-local UTC offset must equal it in hours. When `subnet` is set, one of the listed networks must be
-the network of a local interface, or contain a gateway when `netifaces-plus` is installed and
-`LUNA_STRICT_SUBNET` is unset. A zone with neither key always applies, and every zone that applies
-is a starting point for routing.
+`timezone` and `subnet` decide whether the machine is in the zone. luna checks them against local
+state alone, since probing a host would add a timeout to every connection, and a timeout short
+enough to go unnoticed misreads a slow overseas link as unreachable. When `timezone` is set, the
+current local UTC offset must equal it in hours, so in a region with daylight saving time the zone
+applies for only part of the year. When `subnet` is set, one of the listed networks must be the
+network of a local interface, or contain a gateway when `netifaces-plus` is installed and
+`LUNA_STRICT_SUBNET` is unset. Any other network that uses the same private range matches too. A
+zone with neither key always applies, and every zone that applies is a starting point for routing.
 
 `arc` lists one-way links from this zone, each in one of these forms.
 
@@ -175,8 +178,10 @@ hosts whose names start with its name become its aliases.
 `install.sh` runs luna in `~/.ssh` and skips regeneration when luna wrote `config.inc` in the
 last two seconds, or when neither `sshconfig` nor `zone.ini` changed and the network state recorded
 in `config.inc.state` still holds. Concurrent connections take turns on `config.inc.lock`, and a
-connection that had to wait uses the file the previous one wrote. Options applied by `Match` or
-`Include` inside `sshconfig` do not reach the generated routes.
+connection that had to wait uses the file the previous one wrote. luna parses the `Host` blocks of
+`sshconfig` itself, because resolving each host with `ssh -G` would run every `Match exec` in
+`sshconfig` once per host on each regeneration. Options applied by `Match` or `Include` inside
+`sshconfig` therefore do not reach the generated routes.
 
 `install.sh` accepts `-c <dir>` (working directory), `-i <file>` (input config, default
 `sshconfig`) and `-o <file>` (output, default `~/.ssh/config.inc`).
