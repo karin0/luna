@@ -3,8 +3,9 @@ import itertools
 from typing import TYPE_CHECKING, NamedTuple, TextIO
 
 from cfg import ZoneConfig
+from moon import util
 from moon.syn import Config
-from moon.util import dbg, dbg_print, set_dbg
+from moon.util import dbg
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -44,23 +45,12 @@ else:
         console.highlighter = Highlighter()
 
 
-def do_dbg(*args: object, must: bool = False) -> None:
-    line = ('#', *map(str, args))
-    dbg_print(*line, must=must)
-    dbg_buf.append(line)
-
-
-dbg_buf: list[tuple[str, ...]] = []
-set_dbg(do_dbg)
-
-
 def flush_dbg(file: TextIO) -> None:
-    set_dbg()
-    for args in dbg_buf:
-        print(*args, file=file)
+    for line in util.lines:
+        print(*line, file=file)
 
-    if dbg_buf:
-        dbg_buf.clear()
+    if util.lines:
+        util.lines.clear()
         print(file=file)
 
 

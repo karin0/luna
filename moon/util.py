@@ -1,18 +1,17 @@
 import os
 import sys
 
-from typing import Protocol
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
-class DbgSink(Protocol):
-    def __call__(self, *args: object, must: bool = False) -> None: ...
+def _plain(line: tuple[str, ...], must: bool) -> None:
+    print(*line, file=sys.stderr, flush=True)
 
 
-def _plain(*args: object, must: bool = False) -> None:
-    print(*args, file=sys.stderr, flush=True)
-
-
-_emit: DbgSink = _plain
+_emit: Callable[[tuple[str, ...], bool], None] = _plain
 if sys.stderr.isatty():
     try:
         from rich.console import Console
@@ -23,32 +22,25 @@ if sys.stderr.isatty():
 
         console = Console(file=sys.stderr)
 
-        def _rich(*args: object, must: bool = False) -> None:
-            console.print(*(escape(str(x)) for x in args), style=None if must else 'dim')
+        def _rich(line: tuple[str, ...], must: bool) -> None:
+            console.print(*map(escape, line), style=None if must else 'dim')
 
         _emit = _rich
 
 _MUTE = 'LUNA_MUTE' in os.environ
 _VERBOSE = 'LUNA_VERBOSE' in os.environ
 
-
-def dbg_print(*args: object, must: bool = False) -> None:
-    if not _MUTE and (must or _VERBOSE):
-        _emit(*args, must=must)
-
-
-_dbg: DbgSink = dbg_print
+# Every diagnostic line, which generator mode writes into its output as comments.
+lines: list[tuple[str, ...]] = []
 # Monotonic milliseconds of the first and the latest `trace`.
 _clock: tuple[float, float] | None = None
 
 
 def dbg(*args: object, must: bool = False) -> None:
-    _dbg(*args, must=must)
-
-
-def set_dbg(f: DbgSink = dbg_print) -> None:
-    global _dbg
-    _dbg = f
+    line = ('#', *map(str, args))
+    lines.append(line)
+    if not _MUTE and (must or _VERBOSE):
+        _emit(line, must)
 
 
 if os.environ.get('MOON_TRACE'):
