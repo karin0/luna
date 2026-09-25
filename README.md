@@ -176,12 +176,12 @@ hosts whose names start with its name become its aliases.
 ## Generator mode details
 
 `install.sh` runs luna in `~/.ssh` and skips regeneration when luna wrote `config.inc` in the
-last two seconds, or when neither `sshconfig` nor `zone.ini` changed and the network state recorded
-in `config.inc.state` still holds. Concurrent connections take turns on `config.inc.lock`, and a
-connection that had to wait uses the file the previous one wrote. luna parses the `Host` blocks of
-`sshconfig` itself, because resolving each host with `ssh -G` would run every `Match exec` in
-`sshconfig` once per host on each regeneration. Options applied by `Match` or `Include` inside
-`sshconfig` therefore do not reach the generated routes.
+last two seconds, or when neither `sshconfig`, `zone.ini` nor luna's own sources changed and the
+network state recorded in `config.inc.state` still holds. Concurrent connections take turns on
+`config.inc.lock`, and a connection that had to wait uses the file the previous one wrote. luna
+parses the `Host` blocks of `sshconfig` itself, because resolving each host with `ssh -G` would run
+every `Match exec` in `sshconfig` once per host on each regeneration. Options applied by `Match` or
+`Include` inside `sshconfig` therefore do not reach the generated routes.
 
 `install.sh` accepts `-c <dir>` (working directory), `-i <file>` (input config, default
 `sshconfig`) and `-o <file>` (output, default `~/.ssh/config.inc`).

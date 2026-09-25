@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import glob
 import os
 import sys
 import time
@@ -212,7 +213,10 @@ def main() -> None:
                     dbg(f'{base}: updated {dt * 1000:.3f} ms ago, skipping')
                     return preview(file, a)
 
-                dep_mtime = max(os.path.getmtime(f) for f in (input_file, a.zone_file))
+                here = os.path.dirname(__file__)
+                sources = (os.path.join(here, '*.py'), os.path.join(here, 'moon', '*.py'))
+                deps = (input_file, a.zone_file, *(f for s in sources for f in glob.glob(s)))
+                dep_mtime = max(map(os.path.getmtime, deps))
                 if mtime >= dep_mtime:
                     a.last_state = last_state
 
