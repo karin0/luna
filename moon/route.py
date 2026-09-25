@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 INF = 0x3F3F3F3F
+ARC_COST = 20
 
 
 class Arc(NamedTuple):
@@ -119,7 +120,7 @@ class ZoneSet:
             u.dist = 0
             heapq.heappush(self._q, Dijkstra(0, u))
 
-    def arc(self, frm: Zone, to: Zone | None, via: str = '', cost: int = 20) -> None:
+    def arc(self, frm: Zone, to: Zone | None, via: str, cost: int) -> None:
         if via:
             try:
                 # A host?

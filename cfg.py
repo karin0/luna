@@ -7,12 +7,12 @@ from ipaddress import AddressValueError, IPv4Address, IPv4Network
 from typing import TYPE_CHECKING, NamedTuple
 
 from moon.intf import Interfaces
-from moon.route import Zone, ZoneSet
+from moon.route import ARC_COST, Zone, ZoneSet
 from moon.syn import Config
 from moon.util import dbg, trace
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Container, Iterable, Iterator, Sequence
 
 if not os.environ.get('LUNA_STRICT_SUBNET'):
     try:
@@ -38,6 +38,24 @@ def get_interfaces() -> Interfaces:
     trace('Interfaces')
     dbg(interfaces)
     return interfaces
+
+
+def parse_arc(arc: str, zones: Container[str]) -> tuple[str | None, str, int]:
+    # Returns the target zone, if written out, the host to jump through, and the cost.
+    match arc.split(':'):
+        case [via, to, cost] if cost.isdigit():
+            return to, via, int(cost)
+        case [spec, cost] if cost.isdigit():
+            cost = int(cost)
+        case [via, to]:
+            return to, via, ARC_COST
+        case [spec]:
+            cost = ARC_COST
+        case _:
+            raise ValueError(f'malformed arc {arc!r}')
+
+    # A zone is linked directly, and any other name is a host to jump through.
+    return (spec, '', cost) if spec in zones else (None, spec, cost)
 
 
 class Section(NamedTuple):
@@ -138,47 +156,10 @@ class ZoneConfig:
             tz = cfg.getfloat(sect, 'timezone', fallback=None)
             sections[sect] = Section(g.add(hosts), tz, subnets)
 
-        def parse_arc(arc: str) -> tuple[Zone | None, str, int | None]:
-            parts = arc.split(':')
-
-            try:
-                # via:to:cost
-                via, to, cost = parts
-                return sections[to].zone, via, int(cost)
-            except ValueError, KeyError:
-                try:
-                    via, to = parts
-                    try:
-                        # via|to:cost
-                        cost = int(to)
-                        spec = via
-                    except ValueError:
-                        # via:to
-                        return sections[to].zone, via, None
-                except ValueError:
-                    # via|to
-                    spec = arc
-                    cost = None
-
-                # Direct link to a zone is preferred.
-                try:
-                    to = sections[spec].zone
-                    via = ''
-                except KeyError:
-                    # Target zone is resolved from the `via`.
-                    to = None
-                    via = spec
-
-            return to, via, cost
-
         for sect, section in sections.items():
-            arcs = cfg.get(sect, 'arc', fallback='').split()
-            for arc in arcs:
-                to, via, cost = parse_arc(arc)
-                if cost is None:
-                    g.arc(section.zone, to, via)
-                else:
-                    g.arc(section.zone, to, via, cost)
+            for arc in cfg.get(sect, 'arc', fallback='').split():
+                to, via, cost = parse_arc(arc, sections)
+                g.arc(section.zone, None if to is None else sections[to].zone, via, cost)
 
     def get_state(self) -> str:
         r: list[str] = []
