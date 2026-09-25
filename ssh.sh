@@ -12,10 +12,10 @@ if [ -v LUNA_MUTE ]; then
   dbg() { :; }
   arg=
 else
-  dbg() { echo -e "luna: $*"; }
+  dbg() { echo -e "luna: $*" >&2; }
 
   arg="$*"
-  if [ -t 1 ] && [ -n "$arg" ]; then
+  if [ -t 2 ] && [ -n "$arg" ]; then
     arg="\e[1;31m$arg\e[0m"
   fi
 
