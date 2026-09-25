@@ -73,7 +73,7 @@ def test_routed_run_after_a_direct_one_regenerates(tmp_path: Path):
 def test_changed_sources_regenerate(tmp_path: Path):
     root = tmp_path / 'luna'
     shutil.copytree(ROOT / 'moon', root / 'moon', ignore=shutil.ignore_patterns('__pycache__'))
-    for f in (*ROOT.glob('*.py'), ROOT / 'install.sh'):
+    for f in (*ROOT.glob('*.py'), *ROOT.glob('*.sh')):
         shutil.copy(f, root)
     (tmp_path / 'zone.ini').write_text(LOCAL_ZONE_FILE, encoding='utf-8')
     (tmp_path / 'sshconfig').write_text(SSH_CONFIG, encoding='utf-8')

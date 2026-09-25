@@ -16,17 +16,8 @@ while true; do
   esac
 done
 
-
-if [ -v LUNA_MUTE ] || [ ! -v LUNA_VERBOSE ]; then
-  dbg() { :; }
-  arg=
-else
-  dbg() { echo -e "luna: $*"; }
-  arg="$*"
-  if [ -t 1 ] && [ -n "$arg" ]; then
-  arg="\e[1;31m$arg\e[0m"
-  fi
-fi
+# shellcheck source=prelude.sh
+source "$here/prelude.sh"
 
 if [ -n "$LUNA_SSH_DIRECT" ]; then
   dbg "direct to $arg"
@@ -35,23 +26,10 @@ if [ -n "$LUNA_SSH_DIRECT" ]; then
   exec cp -- "$input_file" "$file"
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  py=python3
-else
-  py=python
-fi
+find_python
 
 if rev="$(git rev-parse --short HEAD 2>/dev/null)"; then
   at=" @ $rev"
-fi
-
-# https://stackoverflow.com/a/37216784
-if [[ $VIRTUAL_ENV && $PATH =~ (^|:)"$VIRTUAL_ENV/bin"($|:) ]]; then
-  dbg "detaching from $VIRTUAL_ENV"
-  PATH=${PATH%":$VIRTUAL_ENV/bin"}
-  PATH=${PATH#"$VIRTUAL_ENV/bin:"}
-  PATH=${PATH//":$VIRTUAL_ENV/bin:"/}
-  unset PYTHONHOME VIRTUAL_ENV
 fi
 
 if [ -n "$arg" ]; then

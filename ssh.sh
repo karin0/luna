@@ -8,20 +8,12 @@ set -eo pipefail
 
 luna=("$LUNA_ENTRY" -x "$LUNA_SSH" -z "$LUNA_ZONE" -i "$LUNA_CONFIG")
 
-if [ -v LUNA_MUTE ] || [ ! -v LUNA_VERBOSE ]; then
-  dbg() { :; }
-  arg=
-else
-  dbg() { echo -e "luna: $*" >&2; }
+# The wrapper is often a copy or a link on PATH, so the repository is found from LUNA_ENTRY.
+# shellcheck source=prelude.sh
+source "$(dirname -- "$LUNA_ENTRY")/prelude.sh"
 
-  arg="$*"
-  if [ -t 2 ] && [ -n "$arg" ]; then
-    arg="\e[1;31m$arg\e[0m"
-  fi
-
-  if rev="$(git -C "$(dirname -- "$LUNA_ZONE")" rev-parse --short HEAD 2>/dev/null)"; then
-    at=" @ $rev"
-  fi
+if [ -n "$verbose" ] && rev="$(git -C "$(dirname -- "$LUNA_ZONE")" rev-parse --short HEAD 2>/dev/null)"; then
+  at=" @ $rev"
 fi
 
 if [ -n "$LUNA_SSH_DIRECT" ]; then
@@ -29,20 +21,7 @@ if [ -n "$LUNA_SSH_DIRECT" ]; then
   exec "$LUNA_SSH" "$@"
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  py=python3
-else
-  py=python
-fi
-
-# https://stackoverflow.com/a/37216784
-if [[ $VIRTUAL_ENV && $PATH =~ (^|:)"$VIRTUAL_ENV/bin"($|:) ]]; then
-  dbg "detaching from $VIRTUAL_ENV"
-  PATH=${PATH%":$VIRTUAL_ENV/bin"}
-  PATH=${PATH#"$VIRTUAL_ENV/bin:"}
-  PATH=${PATH//":$VIRTUAL_ENV/bin:"/}
-  unset PYTHONHOME VIRTUAL_ENV
-fi
+find_python
 
 dbg "connecting to $arg$at"
 export LUNA_SSH_DIRECT=1
