@@ -188,8 +188,11 @@ every `Match exec` in `sshconfig` once per host on each regeneration. Options ap
 
 ## Diagnostics
 
-`LUNA_MUTE` silences the scripts and `luna.py`, and `MOON_TRACE` adds timings to the output. In
-generator mode the same diagnostics are also written into `config.inc` as comments.
+By default luna prints only the routes to the destination and the errors. `LUNA_VERBOSE` adds the
+rest, such as the destination after `%h` substitution, the detected network state and the options
+the destination ends up with. `LUNA_MUTE` silences everything, and `MOON_TRACE` adds timings to the
+verbose output. In generator mode the full diagnostics are also written into `config.inc` as
+comments.
 
 ## Development
 

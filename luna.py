@@ -147,7 +147,7 @@ def main() -> None:
 
                 traceback.print_exc()
 
-        dbg('luna: executing', repr(' '.join(argv)), must=True)
+        dbg('luna: executing', repr(' '.join(argv)))
         cmd = (ssh or 'ssh', *argv)
         if a.print_cmd:
             import shlex

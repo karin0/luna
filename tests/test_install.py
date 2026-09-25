@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import ROOT, SSH_CONFIG
+from conftest import ROOT, SSH_CONFIG, Tree
 
 
 @pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
@@ -118,3 +118,30 @@ def test_scripts_are_quiet_outside_a_git_repository(tmp_path: Path):
         },
     )
     assert 'fatal' not in wrapper.stderr
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+@pytest.mark.parametrize('verbose', [False, True])
+def test_wrapper_prints_diagnostics_only_when_verbose(tree: Tree, verbose: bool):
+    env = {k: v for k, v in os.environ.items() if k not in {'LUNA_MUTE', 'LUNA_VERBOSE'}}
+    if verbose:
+        env['LUNA_VERBOSE'] = '1'
+    r = subprocess.run(
+        ('bash', str(ROOT / 'ssh.sh'), 'ofbox'),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env
+        | {
+            'LUNA_SSH': 'true',
+            'LUNA_ENTRY': str(ROOT / 'luna.py'),
+            'LUNA_ZONE': str(tree.zone_file),
+        },
+    )
+    # The remote command's output owns stdout.
+    assert not r.stdout
+    err = r.stderr
+    assert '[ofgw] -> {office: ofgw, ofbox} (20)' in err
+    assert ('connecting to ofbox' in err) == verbose
+    assert ("executing '-J ofgw ofbox'" in err) == verbose

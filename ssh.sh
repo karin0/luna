@@ -8,7 +8,7 @@ set -eo pipefail
 
 luna=("$LUNA_ENTRY" -x "$LUNA_SSH" -z "$LUNA_ZONE" -i "$LUNA_CONFIG")
 
-if [ -v LUNA_MUTE ]; then
+if [ -v LUNA_MUTE ] || [ ! -v LUNA_VERBOSE ]; then
   dbg() { :; }
   arg=
 else

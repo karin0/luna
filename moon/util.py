@@ -8,33 +8,33 @@ class DbgSink(Protocol):
     def __call__(self, *args: object, must: bool = False) -> None: ...
 
 
-if 'LUNA_MUTE' in os.environ:
+def _plain(*args: object, must: bool = False) -> None:
+    print(*args, file=sys.stderr, flush=True)
 
-    def dbg_print(*args: object, must: bool = False) -> None:
-        pass
 
-elif sys.stderr.isatty():
+_emit: DbgSink = _plain
+if sys.stderr.isatty():
     try:
         from rich.console import Console
     except ImportError:
-
-        def dbg_print(*args: object, must: bool = False) -> None:
-            print(*args, file=sys.stderr)
-
+        pass
     else:
         from rich.markup import escape
 
         console = Console(file=sys.stderr)
 
-        def dbg_print(*args: object, must: bool = False) -> None:
+        def _rich(*args: object, must: bool = False) -> None:
             console.print(*(escape(str(x)) for x in args), style=None if must else 'dim')
 
-else:
+        _emit = _rich
 
-    def dbg_print(*args: object, must: bool = False) -> None:
-        if must:
-            print(*args, file=sys.stderr)
-            sys.stderr.flush()
+_MUTE = 'LUNA_MUTE' in os.environ
+_VERBOSE = 'LUNA_VERBOSE' in os.environ
+
+
+def dbg_print(*args: object, must: bool = False) -> None:
+    if not _MUTE and (must or _VERBOSE):
+        _emit(*args, must=must)
 
 
 _dbg: DbgSink = dbg_print
