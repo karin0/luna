@@ -45,14 +45,5 @@ class Interfaces:
     def __str__(self) -> str:
         return 'interfaces: ' + ', '.join(sorted(map(str, self.ints.values())))
 
-    def check_subnet(
-        self, net: IPv4Network, *, as_sub: bool = False, as_super: bool = False
-    ) -> IPv4Interface | None:
-        try:
-            return self.ints[net]
-        except KeyError:
-            pass
-        if as_sub or as_super:
-            for intf_net, intf in self.ints.items():
-                if (as_sub and net.subnet_of(intf_net)) or (as_super and intf_net.subnet_of(net)):
-                    return intf
+    def check_subnet(self, net: IPv4Network) -> bool:
+        return net in self.ints

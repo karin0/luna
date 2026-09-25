@@ -20,7 +20,5 @@ class Gateways:
     def __str__(self) -> str:
         return 'gateways: ' + ', '.join(sorted(map(str, self._gws)))
 
-    def check_subnet(self, net: IPv4Network) -> IPv4Address | None:
-        for gw in self._gws:
-            if gw in net:
-                return gw
+    def check_subnet(self, net: IPv4Network) -> bool:
+        return any(gw in net for gw in self._gws)
