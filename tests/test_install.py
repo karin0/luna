@@ -120,14 +120,12 @@ def test_scripts_are_quiet_outside_a_git_repository(tmp_path: Path):
     assert 'fatal' not in wrapper.stderr
 
 
-@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
-@pytest.mark.parametrize('verbose', [False, True])
-def test_wrapper_prints_diagnostics_only_when_verbose(tree: Tree, verbose: bool):
+def run_wrapper(tree: Tree, dest: str, *, verbose: bool) -> str:
     env = {k: v for k, v in os.environ.items() if k not in {'LUNA_MUTE', 'LUNA_VERBOSE'}}
     if verbose:
         env['LUNA_VERBOSE'] = '1'
     r = subprocess.run(
-        ('bash', str(ROOT / 'ssh.sh'), 'ofbox'),
+        ('bash', str(ROOT / 'ssh.sh'), dest),
         check=True,
         capture_output=True,
         text=True,
@@ -141,7 +139,20 @@ def test_wrapper_prints_diagnostics_only_when_verbose(tree: Tree, verbose: bool)
     )
     # The remote command's output owns stdout.
     assert not r.stdout
-    err = r.stderr
+    return r.stderr
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+@pytest.mark.parametrize('verbose', [False, True])
+def test_wrapper_prints_diagnostics_only_when_verbose(tree: Tree, verbose: bool):
+    err = run_wrapper(tree, 'ofbox', verbose=verbose)
     assert '[ofgw] -> {office: ofgw, ofbox} (20)' in err
     assert ('connecting to ofbox' in err) == verbose
     assert ("executing '-J ofgw ofbox'" in err) == verbose
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+@pytest.mark.parametrize('verbose', [False, True])
+def test_wrapper_names_a_direct_host_only_when_asked(tree: Tree, verbose: bool):
+    assert 'Direct for ofbox' in run_wrapper(tree, 'd.ofbox', verbose=verbose)
+    assert ('Direct for github.com' in run_wrapper(tree, 'github.com', verbose=verbose)) == verbose
