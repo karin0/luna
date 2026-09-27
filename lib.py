@@ -49,7 +49,7 @@ def generate(input_file: str, args: Args) -> Writer | None:
     )
 
     if host and (real_host := cfg.resolve_direct(host)):
-        dbg('Direct for', real_host, must=True)
+        dbg('Direct for', real_host, must=real_host != host)
 
     if args.output_file:
         args.state = state = cfg.get_state().strip()
@@ -103,7 +103,7 @@ def resolve(host: str, args: Args) -> tuple[str, str]:
     highlight(((NAME, c.hosts() if c else ()), (ZONE, cfg.zones()), (HOST, (host,))))
 
     if real_host := cfg.resolve_direct(host):
-        dbg('Direct for', real_host, must=True)
+        dbg('Direct for', real_host, must=real_host != host)
         return real_host, ''
 
     return cfg.route(host).resolve(host) or (host, '')
