@@ -170,7 +170,9 @@ class Config:
 
         def flush(new_blk: Block) -> None:
             nonlocal blk
-            self._push_blk(blk)
+            # The default block exists only when options precede the first block.
+            if blk or blk is not default_blk:
+                self._push_blk(blk)
             blk = new_blk
 
         for line in fp:
@@ -186,7 +188,7 @@ class Config:
                         flush(Block(line))
             elif line.lstrip():
                 blk.push(line)
-        self._push_blk(blk)
+        flush(blk)
 
         if default_blk:
             default_blk.header = 'Host *  # Default'
@@ -210,7 +212,7 @@ class Config:
             blk.print(file)
 
         if self._ext_blks and self._blks:
-            print(separator, file=file)
+            print(separator, end='\n\n', file=file)
 
         for blk in self._blks:
             blk.print(file)
