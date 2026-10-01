@@ -1,6 +1,6 @@
 import itertools
 
-from typing import TYPE_CHECKING, NamedTuple, TextIO
+from typing import TYPE_CHECKING, TextIO
 
 from cfg import ZoneConfig
 from moon import util
@@ -27,22 +27,15 @@ def flush_dbg(file: TextIO) -> None:
         print(file=file)
 
 
-class Writer(NamedTuple):
-    write: Callable[[TextIO], None]
-    write_flat: Callable[[TextIO], None]
-
-
-def generate(input_file: str, args: Args) -> Writer | None:
+def generate(input_file: str, args: Args) -> Callable[[TextIO], None] | None:
     with open(input_file, encoding='utf-8') as fp:
         c = Config(fp)
 
     cfg = ZoneConfig(args.zone_file, c)
     host = args.host
-    cfg_hosts = tuple(c.hosts())
-
     highlight(
         (
-            (NAME, cfg_hosts),
+            (NAME, c.hosts()),
             (ZONE, cfg.zones()),
             (HOST, (host,) if host else ()),
         )
@@ -67,27 +60,22 @@ def generate(input_file: str, args: Args) -> Writer | None:
     if host := args.host:
         dbg_query(c, host)
 
-    def write(file: TextIO, cfg: Config = c, *, annotate: bool = True) -> None:
+    # A zone alias is another address of its canonical host, so host lists leave it out.
+    c.unlist(frozenset(g.aliases()))
+
+    def write(file: TextIO) -> None:
         if args.header:
             print(args.header, file=file)
 
-        if annotate and not file.isatty():
+        if not file.isatty():
             flush_dbg(file)
 
-        cfg.print(file, separator=args.header, annotate=annotate)
+        c.print(file, separator=args.header)
 
         if args.header:
             print(args.header, file=file)
 
-    # VS Code Remote - SSH lists every `Host`, so the flat config omits the generated
-    # 'd.' hosts and keeps zone aliases, which routes still jump through, out of the list.
-    def write_flat(file: TextIO) -> None:
-        aliases = frozenset(g.aliases())
-        listed = (h for h in cfg_hosts if h not in aliases)
-        unlisted = (h for h in cfg_hosts if h in aliases)
-        write(file, c.select(listed, unlisted), annotate=False)
-
-    return Writer(write, write_flat)
+    return write
 
 
 def resolve(host: str, args: Args) -> tuple[str, str]:

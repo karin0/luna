@@ -1,4 +1,5 @@
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -56,28 +57,7 @@ def test_direct_alias_inherits_the_connection_options(tree: Tree):
     ]
 
 
-@pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
-def test_generated_config_is_accepted_by_ssh(tree: Tree, tmp_path: Path):
-    out = tmp_path / 'config.inc'
-    argv = (
-        sys.executable,
-        str(ROOT / 'luna.py'),
-        '-z',
-        str(tree.zone_file),
-        '-i',
-        str(tree.input_file),
-        '-o',
-        str(out),
-        '-ff',
-        'ofbox',
-    )
-    subprocess.run(
-        argv, check=True, capture_output=True, timeout=30, env=os.environ | {'LUNA_MUTE': '1'}
-    )
-    # ssh exits 255 and abandons the file when a keyword arrives with no argument.
-    subprocess.run(
-        ('ssh', '-G', '-F', str(out), 'ofbox'), check=True, capture_output=True, timeout=30
-    )
+needs_ssh = pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
 
 
 def test_generator_requires_an_input_file(tree: Tree):
@@ -97,7 +77,7 @@ def test_generator_requires_an_input_file(tree: Tree):
 HEADER = '# Generated for the test'
 
 
-def generate_files(tree: Tree, tmp_path: Path, force: str) -> tuple[Path, Path]:
+def generate_file(tree: Tree, tmp_path: Path, force: str = '-f') -> Path:
     out = tmp_path / 'config.inc'
     argv = (
         sys.executable,
@@ -116,36 +96,28 @@ def generate_files(tree: Tree, tmp_path: Path, force: str) -> tuple[Path, Path]:
     subprocess.run(
         argv, check=True, capture_output=True, timeout=30, env=os.environ | {'LUNA_MUTE': '1'}
     )
-    return out, out.with_name(out.name + '.flat')
+    return out
 
 
-# '-f' goes through the lock and '-ff' skips it; both write the flat config.
-@pytest.mark.parametrize('force', ['-f', '-ff'])
-def test_flat_config_lists_the_input_hosts_with_their_routes(
-    tree: Tree, tmp_path: Path, force: str
-):
-    _, flat = generate_files(tree, tmp_path, force)
-    text = flat.read_text(encoding='utf-8')
-    cfg = Config(StringIO(text))
-
-    assert all(line.startswith('#') for line in text.splitlines() if '#' in line)
-    assert HEADER in text
-    # The generated 'd.' hosts stay out of the client's host list.
-    assert sorted(cfg.hosts()) == ['box1', 'gw1', 'ofbox', 'ofgw']
-    assert 'ProxyJump ofgw' in opts(cfg, 'ofbox')
-
-
-@pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
-def test_flat_config_is_accepted_by_ssh(tree: Tree, tmp_path: Path):
-    _, flat = generate_files(tree, tmp_path, '-f')
-    out = subprocess.run(
-        ('ssh', '-G', '-F', str(flat), 'ofbox'),
+def ssh_g(file: Path, host: str) -> list[str]:
+    # ssh exits 255 and abandons the file when a keyword arrives with no argument.
+    return subprocess.run(
+        ('ssh', '-G', '-F', str(file), host),
         check=True,
         capture_output=True,
         text=True,
         timeout=30,
-    ).stdout
-    assert 'proxyjump ofgw' in out.splitlines()
+    ).stdout.splitlines()
+
+
+# The names a client that lists hosts offers: the literal patterns of `Host` lines.
+def listed(file: Path) -> list[str]:
+    names: list[str] = []
+    for line in file.read_text(encoding='utf-8').splitlines():
+        keyword, *patterns = line.split('#', 1)[0].split() or ('',)
+        if keyword.lower() == 'host':
+            names.extend(p for p in patterns if not any(c in p for c in '*?!'))
+    return names
 
 
 ALIAS_ZONE_FILE = '''\
@@ -165,24 +137,52 @@ Host ofgw-pub
 '''
 
 
-@pytest.mark.skipif(shutil.which('ssh') is None, reason='needs ssh(1)')
-def test_flat_config_resolves_an_unlisted_jump_alias(tmp_path: Path):
+@pytest.fixture
+def alias_tree(tmp_path: Path) -> Tree:
     tree = Tree(tmp_path / 'zone.ini', tmp_path / 'sshconfig')
     tree.zone_file.write_text(ALIAS_ZONE_FILE, encoding='utf-8')
     tree.input_file.write_text(SSH_CONFIG + ALIAS_HOST, encoding='utf-8')
-    _, flat = generate_files(tree, tmp_path, '-f')
+    return tree
 
-    # The alias is reached by clicking its canonical host, so only that is listed.
-    assert 'ofgw-pub' not in Config(StringIO(flat.read_text(encoding='utf-8'))).hosts()
 
-    def resolve(host: str) -> list[str]:
-        return subprocess.run(
-            ('ssh', '-G', '-F', str(flat), host),
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        ).stdout.splitlines()
+# Generated blocks and zone aliases reach ssh, but each machine is listed once.
+# '-f' goes through the lock and '-ff' skips it.
+@pytest.mark.parametrize('force', ['-f', '-ff'])
+def test_host_list_holds_each_input_host_once(alias_tree: Tree, tmp_path: Path, force: str):
+    out = generate_file(alias_tree, tmp_path, force)
+    assert out.read_text(encoding='utf-8').startswith(HEADER + '\n')
+    assert sorted(listed(out)) == ['box1', 'gw1', 'ofbox', 'ofgw']
 
-    assert 'proxyjump ofgw-pub' in resolve('ofbox')
-    assert {'hostname 198.51.100.1', 'port 2222'} <= set(resolve('ofgw-pub'))
+
+@needs_ssh
+def test_unlisted_hosts_resolve_in_ssh(alias_tree: Tree, tmp_path: Path):
+    out = generate_file(alias_tree, tmp_path)
+    assert 'proxyjump ofgw-pub' in ssh_g(out, 'ofbox')
+    assert {'hostname 198.51.100.1', 'port 2222'} <= set(ssh_g(out, 'ofgw-pub'))
+    assert 'hostname 192.168.1.2' in ssh_g(out, 'd.ofbox')
+
+
+def readme_sed() -> list[str]:
+    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+    (line,) = (l for l in readme.splitlines() if l.startswith('sed '))
+    return shlex.split(line)
+
+
+# Parsers without `Match originalhost` read the copy that the README command prints.
+@needs_ssh
+@pytest.mark.skipif(shutil.which('sed') is None, reason='needs sed(1)')
+def test_readme_command_rewrites_unlisted_blocks_as_host(alias_tree: Tree, tmp_path: Path):
+    out = generate_file(alias_tree, tmp_path)
+    *cmd, _ = readme_sed()
+    compat = tmp_path / 'compat'
+    compat.write_text(
+        subprocess.run(
+            (*cmd, str(out)), check=True, capture_output=True, text=True, timeout=30
+        ).stdout,
+        encoding='utf-8',
+    )
+
+    assert not any(l.startswith('Match') for l in compat.read_text(encoding='utf-8').splitlines())
+    assert {'d.ofbox', 'ofgw-pub'} <= set(listed(compat))
+    for host in ('ofbox', 'd.ofbox', 'ofgw-pub'):
+        assert ssh_g(compat, host) == ssh_g(out, host)
