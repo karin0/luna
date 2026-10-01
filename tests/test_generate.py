@@ -128,7 +128,6 @@ def test_flat_config_lists_the_input_hosts_with_their_routes(
     text = flat.read_text(encoding='utf-8')
     cfg = Config(StringIO(text))
 
-    # VS Code Remote - SSH breaks on inline comments; full-line ones are fine.
     assert all(line.startswith('#') for line in text.splitlines() if '#' in line)
     assert HEADER in text
     # The generated 'd.' hosts stay out of the client's host list.
