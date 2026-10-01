@@ -9,7 +9,7 @@ from fnmatch import fnmatch
 from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Container, Iterable, Sequence
 
 # ssh_config(5): a keyword is separated from its values by whitespace, or by
 # optional whitespace around exactly one '='.
@@ -62,6 +62,13 @@ class Directive:
 _blk_no = itertools.count()
 
 
+# Clients that list hosts read them from `Host` lines, while ssh matches
+# `Match originalhost` against the same name, so blocks headed by it reach
+# ssh but stay out of those lists.
+def unlisted_header(hosts: Iterable[str]) -> str:
+    return 'Match originalhost ' + ','.join(hosts)
+
+
 class Block:
     def __init__(
         self, header: str = '', hosts: Sequence[str] = (), ext: bool = False, comment: str = ''
@@ -106,8 +113,8 @@ class Block:
 
     __repr__ = __str__
 
-    def print(self, file: TextIO, *, annotate: bool = True) -> None:
-        if annotate and (comment := ' '.join(self.comment.split())):
+    def print(self, file: TextIO) -> None:
+        if comment := ' '.join(self.comment.split()):
             file.write(self.header)
             file.write('  # ')
             print(comment, file=file)
@@ -118,7 +125,7 @@ class Block:
             if self.ext:
                 file.write('  ')
             if isinstance(line, Line):
-                if annotate and last_ref is not line.blk:
+                if last_ref is not line.blk:
                     last_ref = line.blk
                     if header := line.blk.header.strip():
                         line += '  # ' + header
@@ -141,8 +148,9 @@ class Line(str):
         return obj
 
 
-# This aims to parse most `Host` blocks, but dynamic options applied by `Match`
-# and `Include` will not affect the generated (attached) options.
+# This aims to parse most `Host` blocks and the `Match originalhost` blocks that
+# act like them, but options applied by other `Match` blocks and `Include` will
+# not affect the generated (attached) options.
 #
 # Parsing and evaluating them like `ssh -G` could be costly with side effects.
 #
@@ -172,7 +180,11 @@ class Config:
             if d.opt == 'host':
                 flush(Block(line, d.values))
             elif d.opt == 'match':
-                flush(Block(line))
+                match d.values:
+                    case (criterion, patterns) if criterion.lower() == 'originalhost':
+                        flush(Block(line, patterns.split(',')))
+                    case _:
+                        flush(Block(line))
             elif line.lstrip():
                 blk.push(line)
         self._push_blk(blk)
@@ -194,17 +206,15 @@ class Config:
                 else:
                     self._host_map[host].append(blk)
 
-    def print(
-        self, file: TextIO = sys.stdout, separator: str | None = None, *, annotate: bool = True
-    ) -> None:
+    def print(self, file: TextIO = sys.stdout, separator: str | None = None) -> None:
         for blk in self._ext_blks:
-            blk.print(file, annotate=annotate)
+            blk.print(file)
 
         if separator is not None and self._ext_blks and self._blks:
             print(separator, file=file)
 
         for blk in self._blks:
-            blk.print(file, annotate=annotate)
+            blk.print(file)
 
     # Attach `name` as an alias of `host`.
     def attach(self, name: str, host: str) -> None:
@@ -228,13 +238,12 @@ class Config:
 
             old_hosts = set(blk.hosts)
             if hosts := tuple(h for h in hosts if h not in old_hosts):
-                blk.header += ' ' + ' '.join(hosts)
                 blk.hosts.extend(hosts)
+                blk.header = unlisted_header(blk.hosts)
                 for host in hosts:
                     self._host_map[host].append(blk)
         else:
-            header = 'Host ' + ' '.join(hosts)
-            blk = Block(header, hosts, ext=True, comment=comment)
+            blk = Block(unlisted_header(hosts), hosts, ext=True, comment=comment)
             for line in lines:
                 blk.push(line)
             self._push_blk(blk, ext=True)
@@ -280,15 +289,8 @@ class Config:
             ):
                 yield host, hostname
 
-    # `unlisted` hosts get `Match originalhost` blocks, which ssh matches like
-    # `Host` but which are no connection targets for clients that list them.
-    def select(self, hosts: Iterable[str], unlisted: Iterable[str] = ()) -> Config:
-        cfg = Config(None)
-        for host in hosts:
-            cfg.add_host((host,), self.query(host))
-        for host in unlisted:
-            blk = Block(f'Match originalhost {host}', ext=True)
-            for line in self.query(host):
-                blk.push(line)
-            cfg._push_blk(blk, ext=True)
-        return cfg
+    # Moves the blocks that name only `hosts` out of the lists of clients.
+    def unlist(self, hosts: Container[str]) -> None:
+        for blk in self._blks:
+            if blk.hosts and all(h in hosts for h in blk.hosts):
+                blk.header = unlisted_header(blk.hosts)

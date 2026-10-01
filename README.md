@@ -117,17 +117,29 @@ running it.
 
 ## VS Code Remote - SSH
 
-Every regeneration also writes `~/.ssh/config.inc.flat`, a flat config with one `Host` block per
-host of `sshconfig`, holding the options that apply to it and its route. It leaves out the `d.`
-hosts, which would otherwise fill the host list of Remote - SSH. Point the `remote.SSH.configFile`
-setting at it.
-Zone aliases are written as `Match originalhost` blocks, which Remote - SSH does not list, so the
-list shows each host once while routes can still jump through its aliases.
+Point the `remote.SSH.configFile` setting at `~/.ssh/config.inc`. By default it reads
+`~/.ssh/config`, which holds only the `Match exec` block that includes `config.inc`, and then lists
+no hosts. Remote - SSH lists the names on `Host` lines and leaves `Match` blocks out, so luna heads
+the blocks it adds, the `d.` hosts and the routes, with `Match originalhost`, which ssh matches like
+`Host`. It heads the blocks of `sshconfig` that name only zone aliases the same way, so the list
+shows each machine once.
 
 Remote - SSH connects with `ssh -F` on that file, which leaves `~/.ssh/config` and its `Match exec`
 line unread, so its connections do not regenerate anything. They use the routes from the last `ssh`
 run elsewhere. After moving to another network, run any `ssh` command once before connecting from
 VS Code.
+
+## Other SSH config parsers
+
+A program that parses SSH configs itself can read `config.inc` only if its parser supports
+`Match originalhost`. For other parsers, this command prints a copy with those blocks headed by
+`Host`, which ssh resolves the same way.
+
+```sh
+sed -E '/^Match originalhost [^ #]+( +#.*)?$/{s/^Match originalhost //;s/,/ /g;s/^/Host /;}' ~/.ssh/config.inc
+```
+
+The copy keeps the routes it was made with, so make it again after an `ssh` run on another network.
 
 ## Skipping luna
 
@@ -180,9 +192,10 @@ hosts whose names start with its name become its aliases.
 last two seconds, or when neither `sshconfig`, `zone.ini` nor luna's own sources changed and the
 network state recorded in `config.inc.state` still holds. Concurrent connections take turns on
 `config.inc.lock`, and a connection that had to wait uses the file the previous one wrote. luna
-parses the `Host` blocks of `sshconfig` itself, because resolving each host with `ssh -G` would run
-every `Match exec` in `sshconfig` once per host on each regeneration. Options applied by `Match` or
-`Include` inside `sshconfig` therefore do not reach the generated routes.
+parses the `Host` and `Match originalhost` blocks of `sshconfig` itself, because resolving each host
+with `ssh -G` would run every `Match exec` in `sshconfig` once per host on each regeneration.
+Options applied by other `Match` blocks or `Include` inside `sshconfig` therefore do not reach the
+generated routes.
 
 `install.sh` accepts `-c <dir>` (working directory), `-i <file>` (input config, default
 `sshconfig`) and `-o <file>` (output, default `~/.ssh/config.inc`).

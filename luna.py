@@ -15,8 +15,6 @@ from moon.util import dbg
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Iterator, Sequence
 
-    from lib import Writer
-
 
 # ssh(1): the options that take no argument.
 FLAGS = frozenset('46AaCfGgKkMNnqsTtVvXxYy')
@@ -111,14 +109,6 @@ def open_output(file: str) -> Generator[StringIO]:
         fp.write(buf.getvalue())
 
 
-def write_outputs(r: Writer, file: str) -> None:
-    with open_output(file) as fp:
-        r.write(fp)
-
-    with open_output(file + '.flat') as fp:
-        r.write_flat(fp)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input-file')
@@ -175,11 +165,12 @@ def main() -> None:
         file = a.output_file = None
 
     if not file or a.force > 1:
-        if r := generate(input_file, a):
+        if write := generate(input_file, a):
             if file:
-                write_outputs(r, file)
+                with open_output(file) as fp:
+                    write(fp)
             else:
-                r.write(sys.stdout)
+                write(sys.stdout)
         return None
 
     with wait_lock(file + '.lock') as waited:
@@ -220,8 +211,9 @@ def main() -> None:
                 if mtime >= dep_mtime:
                     a.last_state = last_state
 
-        if r := generate(input_file, a):
-            write_outputs(r, file)
+        if write := generate(input_file, a):
+            with open_output(file) as fp:
+                write(fp)
 
             if (state := a.state) is not None and state != last_state:
                 with open(state_file, 'w', encoding='utf-8') as fp:
