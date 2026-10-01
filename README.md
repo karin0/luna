@@ -73,7 +73,7 @@ Your own config now lives in `~/.ssh/sshconfig`, and that is the file you edit f
 `~/.ssh/config` holds only the two lines copied from [config](config). Before each connection its
 `Match exec` line runs [install.sh](install.sh), which regenerates `~/.ssh/config.inc`, and the
 `Include` line loads that file. The generated file is a copy of `sshconfig` with the jump options
-added in front, and it carries a `DO NOT EDIT` header.
+added in front, and its `DO NOT EDIT` header names the git revisions of luna and of `sshconfig`.
 
 ### 4b. Set up wrapper mode
 

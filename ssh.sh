@@ -13,7 +13,7 @@ luna=("$LUNA_ENTRY" -x "$LUNA_SSH" -z "$LUNA_ZONE" -i "$LUNA_CONFIG")
 source "$(dirname -- "$LUNA_ENTRY")/prelude.sh"
 
 if [ -n "$verbose" ] && rev="$(git -C "$(dirname -- "$LUNA_ZONE")" rev-parse --short HEAD 2>/dev/null)"; then
-  at=" @ $rev"
+  at=" ($(basename -- "$LUNA_ZONE") @ $rev)"
 fi
 
 if [ -n "$LUNA_SSH_DIRECT" ]; then

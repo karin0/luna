@@ -2,7 +2,6 @@ import functools
 import itertools
 import re
 import shlex
-import sys
 
 from collections import defaultdict
 from fnmatch import fnmatch
@@ -206,11 +205,11 @@ class Config:
                 else:
                     self._host_map[host].append(blk)
 
-    def print(self, file: TextIO = sys.stdout, separator: str | None = None) -> None:
+    def print(self, file: TextIO, separator: str) -> None:
         for blk in self._ext_blks:
             blk.print(file)
 
-        if separator is not None and self._ext_blks and self._blks:
+        if self._ext_blks and self._blks:
             print(separator, file=file)
 
         for blk in self._blks:
