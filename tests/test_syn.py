@@ -103,3 +103,32 @@ def test_attached_alias_keeps_the_hostname_of_its_source():
     cfg = Config(StringIO('Host a\n  Hostname 192.0.2.1\n'))
     cfg.attach('d.a', 'a')
     assert opts(cfg, 'd.a') == ['Hostname 192.0.2.1']
+
+
+def render(text: str) -> str:
+    out = StringIO()
+    Config(StringIO(text)).print(out, '# separator')
+    return out.getvalue()
+
+
+# The options before the first block apply to every host, as a `Host *` block in their place would.
+@pytest.mark.parametrize(
+    ('text', 'rendered'),
+    [
+        ('', ''),
+        ('Host a\n  Port 1\n', 'Host a\n  Port 1\n\n'),
+        ('Port 1\nHost a\n  User u\n', 'Host *  # Default\nPort 1\n\nHost a\n  User u\n\n'),
+    ],
+)
+def test_default_block_is_rendered_only_with_options(text: str, rendered: str):
+    assert render(text) == rendered
+
+
+def test_separator_stands_between_generated_and_input_blocks():
+    cfg = Config(StringIO('Host a\n  Port 1\n'))
+    cfg.add_host(('b',), ('Port 2',))
+    out = StringIO()
+    cfg.print(out, '# separator')
+    assert out.getvalue() == (
+        'Match originalhost b\n  Port 2\n\n# separator\n\nHost a\n  Port 1\n\n'
+    )
