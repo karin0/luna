@@ -61,7 +61,6 @@ class Args(argparse.Namespace):
     input_file: str | None
     zone_file: str
     output_file: str | None
-    header: str | None
     ssh_executable: str | None
     force: int
     print_cmd: bool
@@ -114,7 +113,6 @@ def main() -> None:
     parser.add_argument('-i', '--input-file')
     parser.add_argument('-z', '--zone-file', default='zone.ini')
     parser.add_argument('-o', '--output-file')
-    parser.add_argument('-H', '--header')
     parser.add_argument('-x', '--ssh-executable')
     parser.add_argument('-f', '--force', action='count', default=0)
     parser.add_argument('-p', '--print-cmd', action='store_true')

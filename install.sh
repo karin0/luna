@@ -28,15 +28,10 @@ fi
 
 find_python
 
-if rev="$(git rev-parse --short HEAD 2>/dev/null)"; then
-  at=" @ $rev"
-fi
-
 if [ -n "$arg" ]; then
-  dbg "connecting to $arg$at"
+  dbg "connecting to $arg"
 else
-  dbg "generating $file$at"
+  dbg "generating $file"
 fi
 
-header="# Generated from 🥮$at at $(date). DO NOT EDIT!"
-exec $py "$here"/luna.py -H "$header" -o "$file" -i "$input_file" "$@"
+exec $py "$here"/luna.py -o "$file" -i "$input_file" "$@"
