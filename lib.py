@@ -90,14 +90,12 @@ def generate(input_file: str, args: Args) -> Callable[[TextIO], None] | None:
     c.unlist(frozenset(g.aliases()))
 
     def write(file: TextIO) -> None:
-        head = header(input_file)
-        print(head, file=file)
+        print(header(input_file), file=file)
 
         if not file.isatty():
             flush_dbg(file)
 
-        c.print(file, head)
-        print(head, file=file)
+        c.print(file, f'# The rest is a copy of {os.path.basename(input_file)}.')
 
     return write
 
