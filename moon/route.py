@@ -189,7 +189,6 @@ class ZoneSet:
                 conf.attach(target, final_hop)
 
                 if len(way) > 1:
-                    # TODO: respect the existing ProxyJump options for dest
                     jumps = '[' + ', '.join(way[:-1]) + ']'
                     conf.add_host((target,), (f'ProxyJump {way[-2]}',), comment=jumps)
 
